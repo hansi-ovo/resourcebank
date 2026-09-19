@@ -1,0 +1,80 @@
+{
+  "date": "2026-09-19T10:09:47.405Z",
+  "results": [
+    {
+      "step": "hero renders with copy deck",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "transition lands on /resources",
+      "ok": true,
+      "note": "5 section titles"
+    },
+    {
+      "step": "TOC click jumps to Fellowships",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "modal closes via Escape",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "modal closes via ×",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "modal closes via outside click",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "admin login",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "cell edit while search runs (non-blocking UI)",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "search finishes with toast",
+      "ok": true,
+      "note": "25.4s (honest delay is 25s; overhead = navigation)"
+    },
+    {
+      "step": "edited name persists after reload",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "demo check → apply updates entry",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "approve pressed (fuse window open)",
+      "ok": true,
+      "note": "Demo Edited 44743"
+    },
+    {
+      "step": "approved card appears on open display tab",
+      "ok": true,
+      "note": "Demo Edited 44743"
+    },
+    {
+      "step": "withdraw pressed",
+      "ok": true,
+      "note": ""
+    },
+    {
+      "step": "withdrawn card disappears from display",
+      "ok": true,
+      "note": ""
+    }
+  ]
+}

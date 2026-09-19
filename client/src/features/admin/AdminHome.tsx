@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { api } from '@/lib/api';
 import { useAuth } from '@/lib/auth';
 import { useEventStream } from '@/lib/sse';
+import { startSearch } from '@/lib/searchRunner';
 import { useToast } from '@/components/ui/Toast';
 import { CatChip } from '@/components/ui/Chip';
 import { Logo } from '@/components/ui/Logo';
@@ -21,7 +22,6 @@ export function AdminHome() {
   const [prompt, setPrompt] = useState('');
   const [scope, setScope] = useState<Scope>('all');
   const [searching, setSearching] = useState(false);
-  const searchingRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -47,34 +47,25 @@ export function AdminHome() {
 
   async function runSearch(e: React.FormEvent) {
     e.preventDefault();
-    if (searchingRef.current || prompt.trim().length < 2) return;
+    if (searching || prompt.trim().length < 2) return;
     setSearching(true);
-    searchingRef.current = true;
-    const before = summary?.reviewCount ?? 0;
-    try {
-      await api.post('/api/search', { prompt: prompt.trim(), scope });
-      // Poll until the job flips searchRunning=false (500ms cadence; 120s cap
-      // covers the honest 25s delay even if a poll hiccups).
-      let finished = false;
-      for (let i = 0; i < 240 && !finished; i++) {
-        await new Promise((r) => setTimeout(r, 500));
-        const sum = await api.get<AdminSummary>('/api/summary');
-        if (!sum.searchRunning) finished = true;
-      }
-      const [sum, review] = await Promise.all([
-        api.get<AdminSummary>('/api/summary'),
-        api.get<Entry[]>('/api/entries?status=review'),
-      ]);
+    // The finish toast fires from the global listener in AdminApp — the
+    // runner keeps polling even if the admin navigates away mid-search.
+    await startSearch(prompt.trim(), scope).catch(() => {
+      toast.show({ kind: 'error', message: 'Search failed. Try again.' });
+    });
+    // refresh what this page shows (Last search line, summary, pending)
+    const [sum, review] = await Promise.all([
+      api.get<AdminSummary>('/api/summary'),
+      api.get<Entry[]>('/api/entries?status=review'),
+    ]).catch(() => [null, null] as const);
+    if (sum && review) {
       setSummary(sum);
       setPending(review.slice(0, 5));
-      const added = Math.max(0, sum.reviewCount - before);
-      toast.show({ kind: 'info', message: `Search finished: ${added} items added to review` }); // ⚑ copy
-    } catch {
-      toast.show({ kind: 'error', message: 'Search failed. Try again.' });
-    } finally {
-      setSearching(false);
-      searchingRef.current = false;
+    } else {
+      await refresh();
     }
+    setSearching(false);
   }
 
   return (
