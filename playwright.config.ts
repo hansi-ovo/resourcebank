@@ -3,9 +3,11 @@ import { defineConfig } from '@playwright/test';
 /**
  * Playwright runs against the dev servers with FAST_MODE=300ms.
  * Start: npm run dev (already FAST_MODE via scripts) then npx playwright test.
+ * globalSetup resets the dev DB to the frozen split so runs are repeatable.
  */
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   timeout: 60_000,
   retries: process.env.CI ? 1 : 0,
   use: {

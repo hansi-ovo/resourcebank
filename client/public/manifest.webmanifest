@@ -1,0 +1,16 @@
+{
+  "name": "DKU Leadership Resource Bank",
+  "short_name": "DKU Resource Bank",
+  "description": "Curated leadership development opportunities for Duke Kunshan University students.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F7F9F7",
+  "theme_color": "#006633",
+  "icons": [
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

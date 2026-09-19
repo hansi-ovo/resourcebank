@@ -103,3 +103,57 @@ body {
 .fuse-quiet [data-phase='armed'] > i {
   display: none;
 }
+
+/* 404 page (quiet, tonal) */
+.nf-root {
+  min-height: 100vh;
+  background: var(--canvas);
+}
+.nf-header {
+  padding: 24px 32px;
+}
+.nf-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 12vh 32px;
+}
+.nf-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-section);
+  font-weight: 620;
+  color: var(--ink);
+}
+.nf-copy {
+  margin-top: 12px;
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+.nf-link {
+  color: var(--brand-blue);
+  font-weight: 600;
+}
+.nf-link:hover {
+  text-decoration: underline;
+}
+
+/* admin lazy-loading fallback */
+.admin-loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--ink-soft);
+}
+
+/* admin table: sticky checkbox column while scrolling horizontally */
+.sticky-col {
+  position: sticky;
+  left: 0;
+  background: var(--surface);
+  z-index: 1;
+}
+
+tr:hover .sticky-col,
+tr.group\/row:hover .sticky-col {
+  background: var(--canvas);
+}

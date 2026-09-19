@@ -1,27 +1,29 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
+import { BrowserRouter, Route, Routes } from 'react-router';
 import './app.css';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AuthProvider } from '@/lib/auth';
-import { AdminGuard } from '@/features/admin/AdminGuard';
-import { AdminHome } from '@/features/admin/AdminHome';
-import { ReviewLayout } from '@/features/admin/ReviewLayout';
 import { HeroPage } from '@/features/display/HeroPage';
-import { ContentPage } from '@/features/display/ContentPage';
-import { ReviewListTab } from '@/features/admin/ReviewListTab';
-import { CheckUpdatesTab } from '@/features/admin/CheckUpdatesTab';
-import { ContentManagementTab } from '@/features/admin/ContentManagementTab';
+import { NotFound } from '@/features/display/NotFound';
 
-function AdminApp() {
+// display content page is a separate route chunk (gsap/ScrollTrigger/modal
+// code only loads on /resources; hero stays eager — it IS the landing page)
+const ContentPage = lazy(() =>
+  import('@/features/display/ContentPage').then((m) => ({ default: m.ContentPage })),
+);
+
+// admin is never linked from the display app (D13) — only admins hit /admin,
+// so it loads on demand and stays out of the display bundle budget.
+const AdminApp = lazy(() =>
+  import('@/features/admin/AdminApp').then((m) => ({ default: m.AdminApp })),
+);
+
+function Loading({ label }: { label: string }) {
   return (
-    <AdminGuard>
-      <Routes>
-        <Route path="/" element={<AdminHome />} />
-        <Route path="/review/:tab" element={<ReviewLayout />} />
-        <Route path="*" element={<Navigate to="/admin" replace />} />
-      </Routes>
-    </AdminGuard>
+    <div className="admin-loading" role="status" aria-label={label}>
+      …
+    </div>
   );
 }
 
@@ -32,10 +34,24 @@ function App() {
         <Routes>
           {/* Display */}
           <Route path="/" element={<HeroPage />} />
-          <Route path="/resources" element={<ContentPage />} />
+          <Route
+            path="/resources"
+            element={
+              <Suspense fallback={<Loading label="Loading" />}>
+                <ContentPage />
+              </Suspense>
+            }
+          />
           {/* Admin (no display→admin links; admins navigate by URL — D13) */}
-          <Route path="/admin/*" element={<AdminApp />} />
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route
+            path="/admin/*"
+            element={
+              <Suspense fallback={<Loading label="Loading admin" />}>
+                <AdminApp />
+              </Suspense>
+            }
+          />
+          <Route path="*" element={<NotFound />} />
         </Routes>
       </ToastProvider>
     </AuthProvider>

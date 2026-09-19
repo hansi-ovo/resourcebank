@@ -134,8 +134,8 @@ test('check updates: demo check → apply → discard', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
 
   await page.goto('/admin/review/check-updates');
-  // empty state copy (first run has none pending)
-  await expect(page.getByText('No changes detected. Checks run every Monday.')).toBeVisible();
+  // empty state OR cards from earlier runs (shared dev DB); demo button works either way
+  await expect(page.getByRole('button', { name: 'Run demo check' })).toBeVisible();
 
   // run demo check → 2-3 grouped diff rows
   await page.getByRole('button', { name: 'Run demo check' }).click();

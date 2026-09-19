@@ -123,12 +123,15 @@
   font-size: 16px;
   font-weight: 600;
   color: var(--ink);
+  min-height: 1.6em; /* stable height for 1-line names (skeleton parity) */
+  overflow: hidden;
 }
 
 .card-meta {
   margin: 0 18px 4px;
   font-size: 13px;
   color: var(--ink-soft);
+  min-height: 1.5em;
 }
 
 .card-domain {
@@ -136,6 +139,28 @@
   margin: 0 18px;
   font-size: 13px;
   color: var(--ink-soft);
+}
+
+.is-skeleton .card-image {
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.is-skeleton .card-name,
+.is-skeleton .card-meta {
+  color: transparent;
+  background: var(--mist);
+  border-radius: 6px;
+  width: 60%;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
 }
 
 /* TOC rail — collapsed ticks, expand on hover/focus zone */
@@ -223,5 +248,8 @@
   .toc-label,
   .toc-tick {
     transition: none;
+  }
+  .is-skeleton .card-image {
+    animation: none;
   }
 }

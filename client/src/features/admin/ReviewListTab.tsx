@@ -117,7 +117,7 @@ export function ReviewListTab() {
             <table className="w-full min-w-[1080px] border-collapse text-left">
               <thead>
                 <tr className="border-b border-mist text-[13px] font-semibold text-ink-soft">
-                  <th scope="col" className="w-10 px-3 py-3">
+                  <th scope="col" className="sticky-col w-10 px-3 py-3">
                     <input
                       type="checkbox"
                       aria-label="Select all"
@@ -140,7 +140,7 @@ export function ReviewListTab() {
               <tbody className="divide-y divide-mist">
                 {visible.map((e) => (
                   <tr key={e.id} className="group/row align-top hover:bg-canvas/60">
-                    <td className="px-3 py-2">
+                    <td className="sticky-col px-3 py-2">
                       <input
                         type="checkbox"
                         aria-label={`Select ${e.name}`}

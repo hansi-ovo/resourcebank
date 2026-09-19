@@ -9,10 +9,11 @@ import { chromium } from '@playwright/test';
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
 
+const BASE = process.env.LH_BASE ?? 'http://localhost:5173';
 const PAGES = [
-  { name: 'hero', url: 'http://localhost:5173/' },
-  { name: 'content', url: 'http://localhost:5173/resources' },
-  { name: 'admin-login', url: 'http://localhost:5173/admin' },
+  { name: 'hero', url: `${BASE}/` },
+  { name: 'content', url: `${BASE}/resources` },
+  { name: 'admin-login', url: `${BASE}/admin` },
 ];
 
 function launchChrome() {

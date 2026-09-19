@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useEventStream } from '@/lib/sse';
 import { useReducedMotion } from '@/lib/motion';
 import { Logo } from '@/components/ui/Logo';
-import { domain } from '@/lib/format';
+import { domain, displayImageUrl } from '@/lib/format';
 import { EntryModal } from './EntryModal';
 import { CATEGORIES, type Entry, type PublishedSection } from 'shared/types';
 import './content-page.css';
@@ -70,12 +70,16 @@ export function ContentPage() {
     () => undefined,
   );
 
+  // hold scroll-spy briefly during programmatic/deep-link scrolls so the
+  // target section's active state isn't overwritten mid-flight
+  const spyHoldRef = useRef(false);
+
   // scroll-spy
   useEffect(() => {
     const observer = new IntersectionObserver(
       (entries) => {
         for (const e of entries) {
-          if (e.isIntersecting) setActive(e.target.id);
+          if (e.isIntersecting && !spyHoldRef.current) setActive(e.target.id);
         }
       },
       { rootMargin: '-30% 0px -55% 0px' },
@@ -84,15 +88,20 @@ export function ContentPage() {
     return () => observer.disconnect();
   }, [sections]);
 
-  // deep link #<categoryId> scrolls once sections exist
+  // deep link #<categoryId> scrolls once sections exist (respecting reduced
+  // motion) and sets active TOC; hold scroll-spy during the flight
   useEffect(() => {
     if (sections === null) return;
     const hash = window.location.hash.replace('#', '');
     if (!hash) return;
     const el = scrollRefs.current.get(hash);
     if (el) {
+      spyHoldRef.current = true;
       el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
       setActive(hash);
+      window.setTimeout(() => {
+        spyHoldRef.current = false;
+      }, reduced ? 150 : 800);
       history.replaceState(null, '', window.location.pathname);
     }
   }, [sections, reduced]);
@@ -128,8 +137,12 @@ export function ContentPage() {
     (id: string) => {
       const el = scrollRefs.current.get(id);
       if (!el) return;
+      spyHoldRef.current = true;
       el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth' });
       setActive(id);
+      window.setTimeout(() => {
+        spyHoldRef.current = false;
+      }, reduced ? 150 : 800);
     },
     [reduced],
   );
@@ -181,9 +194,20 @@ export function ContentPage() {
                   ) : null}{' '}
                   {/* ⚑ copy */}
                 </p>
+              ) : sections === null ? (
+                <div className="content-grid" data-cards data-skeleton aria-hidden="true">
+                  {/* skeleton cards hold layout while /api/published loads (CLS fix) */}
+                  {Array.from({ length: 3 }).map((_, i) => (
+                    <div key={i} className="opportunity-card is-skeleton">
+                      <span className="card-image" />
+                      <span className="card-name">…</span>
+                      <span className="card-meta">…</span>
+                    </div>
+                  ))}
+                </div>
               ) : (
                 <div className="content-grid" data-cards>
-                  {(data?.entries ?? []).map((e) => (
+                  {(data?.entries ?? []).map((e, i) => (
                     <button
                       key={e.id}
                       type="button"
@@ -194,7 +218,12 @@ export function ContentPage() {
                     >
                       <span className="card-image">
                         {e.imageUrl ? (
-                          <img src={e.imageUrl} alt={e.name} loading="lazy" />
+                          <img
+                            src={displayImageUrl(e.imageUrl) ?? undefined}
+                            alt={e.name}
+                            loading={i < 3 ? 'eager' : 'lazy'}
+                            fetchPriority={i === 0 ? 'high' : undefined}
+                          />
                         ) : (
                           <span className="card-fallback" aria-hidden="true">
                             {e.name.slice(0, 1)}

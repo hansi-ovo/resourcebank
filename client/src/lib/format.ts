@@ -57,3 +57,15 @@ export function domain(url: string): string {
     return url;
   }
 }
+
+/**
+ * Maps internal seed-art API paths (`/api/seedimg/:cat/:file`, stored in the
+ * DB as entry.imageUrl) onto static build assets (`/seed/:file`) so the
+ * display app serves placeholder art from the CDN/static layer instead of
+ * proxying every image through Express. External URLs pass through.
+ */
+export function displayImageUrl(url: string | null): string | null {
+  if (!url) return null;
+  const m = /^\/api\/seedimg\/[a-z-]+\/([a-z-]+\.svg)$/.exec(url);
+  return m ? `/seed/${m[1]}` : url;
+}

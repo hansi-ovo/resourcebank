@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Entry } from 'shared/types';
-import { formatDateRange } from '@/lib/format';
+import { formatDateRange, displayImageUrl } from '@/lib/format';
 import { CloseIcon } from '@/features/admin/icons';
 import './EntryModal.css';
 
@@ -83,7 +83,11 @@ export function EntryModal({ entry, onClose }: { entry: Entry; onClose: () => vo
 
         <div className="modal-image" aria-hidden={!entry.imageUrl || imgBroken}>
           {entry.imageUrl && !imgBroken ? (
-            <img src={entry.imageUrl} alt="" onError={() => setImgBroken(true)} />
+            <img
+              src={displayImageUrl(entry.imageUrl) ?? undefined}
+              alt=""
+              onError={() => setImgBroken(true)}
+            />
           ) : (
             <span className="modal-fallback">{entry.name.slice(0, 1)}</span>
           )}
