@@ -14,6 +14,7 @@ export type Row = {
   audience: string;
   starts_at: string | null;
   ends_at: string | null;
+  timeline?: string | null;
   category: (typeof CATEGORY_IDS)[number];
   image_url: string | null;
   quality: number | null;
@@ -34,6 +35,7 @@ export function toEntry(r: Row): Entry {
     audience: JSON.parse(r.audience) as string[],
     startsAt: r.starts_at,
     endsAt: r.ends_at,
+    timeline: r.timeline ?? '',
     category: r.category,
     imageUrl: r.image_url,
     quality: r.quality,
@@ -49,6 +51,11 @@ export function openDb(file: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf-8'));
+  // lightweight migration: entries.timeline added after first release
+  const cols = db.prepare('PRAGMA table_info(entries)').all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === 'timeline')) {
+    db.exec("ALTER TABLE entries ADD COLUMN timeline TEXT NOT NULL DEFAULT ''");
+  }
   return db;
 }
 
@@ -63,8 +70,8 @@ export function seedIfEmpty(db: Database.Database): void {
 
   const now = new Date().toISOString();
   const insert = db.prepare(
-    `INSERT INTO entries (name, summary, url, audience, starts_at, ends_at, category, image_url, quality, status, source, created_at, updated_at)
-     VALUES (@name, @summary, @url, @audience, @startsAt, @endsAt, @category, @imageUrl, @quality, @status, 'search', @now, @now)`,
+    `INSERT INTO entries (name, summary, url, audience, starts_at, ends_at, timeline, category, image_url, quality, status, source, created_at, updated_at)
+     VALUES (@name, @summary, @url, @audience, @startsAt, @endsAt, @timeline, @category, @imageUrl, @quality, @status, 'search', @now, @now)`,
   );
 
   const perCategory = new Map<string, { published: number; review: number }>();
@@ -84,6 +91,7 @@ export function seedIfEmpty(db: Database.Database): void {
         audience: JSON.stringify(e.audience),
         startsAt: e.startsAt,
         endsAt: e.endsAt,
+        timeline: e.timeline ?? '',
         category: e.category,
         imageUrl: placeholderFor(e.imageUrl, e.category),
         quality: e.quality,

@@ -6,6 +6,7 @@ import { ToastProvider } from '@/components/ui/Toast';
 import { AuthProvider } from '@/lib/auth';
 import { HeroPage } from '@/features/display/HeroPage';
 import { NotFound } from '@/features/display/NotFound';
+import ClickSpark from '@/components/react-bits/ClickSpark';
 
 // display content page is a separate route chunk (gsap/ScrollTrigger/modal
 // code only loads on /resources; hero stays eager — it IS the landing page)
@@ -31,28 +32,32 @@ function App() {
   return (
     <AuthProvider>
       <ToastProvider>
-        <Routes>
-          {/* Display */}
-          <Route path="/" element={<HeroPage />} />
-          <Route
-            path="/resources"
-            element={
-              <Suspense fallback={<Loading label="Loading" />}>
-                <ContentPage />
-              </Suspense>
-            }
-          />
-          {/* Admin (no display→admin links; admins navigate by URL — D13) */}
-          <Route
-            path="/admin/*"
-            element={
-              <Suspense fallback={<Loading label="Loading admin" />}>
-                <AdminApp />
-              </Suspense>
-            }
-          />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+        {/* Global click spark on every page (client request: react-bits ClickSpark).
+            sparkColor = DKU green from the brand ramp. */}
+        <ClickSpark sparkColor="#3E7A5C" sparkSize={10} sparkRadius={18} sparkCount={8}>
+          <Routes>
+            {/* Display */}
+            <Route path="/" element={<HeroPage />} />
+            <Route
+              path="/resources"
+              element={
+                <Suspense fallback={<Loading label="Loading" />}>
+                  <ContentPage />
+                </Suspense>
+              }
+            />
+            {/* Admin (no display→admin links; admins navigate by URL — D13) */}
+            <Route
+              path="/admin/*"
+              element={
+                <Suspense fallback={<Loading label="Loading admin" />}>
+                  <AdminApp />
+                </Suspense>
+              }
+            />
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </ClickSpark>
       </ToastProvider>
     </AuthProvider>
   );

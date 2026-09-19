@@ -2,30 +2,32 @@ import { CATEGORIES } from 'shared/types';
 import { gsap } from 'gsap';
 
 /**
- * Signature moment: clone-based shared-element transition (03-pages §Transition).
- * Manual FLIP with getBoundingClientRect capture + fixed overlay — transforms
- * and opacity only. Reduced motion: skip overlay entirely; 250ms crossfade.
+ * Signature moment v2 (request 3c.v): fullscreen color panels + giant words.
  *
- * Overlay lifecycle (owner = App shell):
- *  0. capture label rects on the hero → create overlay clones at those rects
- *  1. 0–0.35s   hero fades to 12%; clones scale 1→2.2 in place; rules → 40vw
- *  2. t=0.15s   route swaps to /resources beneath (page itself opacity 0)
- *  3. 0.35–0.75s clones fly to the incoming section-title rects
- *  4. 0.75–1.1s clones fade out as real titles fade in; rules wipe; overlay unmounts
+ * Choreography (~1.35s, transforms/opacity only, nothing leaves the viewport):
+ *  0.00s  build a fixed overlay
+ *  0.00–0.45s  five full-screen category-color panels sweep in from
+ *              alternating sides and slide together to cover the screen;
+ *              giant category words fly in from off-screen to scattered
+ *              positions across the color field (scatter)
+ *  0.45s  route swaps to /resources beneath the opaque overlay
+ *  0.50–0.95s  words converge toward their section-title positions while
+ *              the panels collapse into thin tonal rule strips (converge)
+ *  0.95–1.35s  overlay fades as the real page (titles + rules) reveals;
+ *              TOC ticks stagger in; overlay unmounts
+ *
+ * Reduced motion: 250ms crossfade (no overlay).
  */
 
-export interface TransitionHandles {
-  start: (opts: { reduced: boolean; swapRoute: () => void; onDone: () => void }) => void;
-}
-
-export function startHeroTransition(opts: {
+interface StartOpts {
   reduced: boolean;
   swapRoute: () => void;
   onDone: () => void;
-}): void {
+}
+
+export function startHeroTransition(opts: StartOpts): void {
   const { reduced, swapRoute, onDone } = opts;
 
-  // reduced motion: 250ms crossfade, no overlay
   if (reduced) {
     const root = document.querySelector('[data-hero-root]') as HTMLElement | null;
     if (root) {
@@ -46,10 +48,7 @@ export function startHeroTransition(opts: {
     return;
   }
 
-  const labels = Array.from(
-    document.querySelectorAll<HTMLElement>('[data-showcase-label]'),
-  )
-    // only the docked/visible copy of each label (first occurrence per category)
+  const labels = Array.from(document.querySelectorAll<HTMLElement>('[data-showcase-label]'))
     .filter((el, i, arr) => arr.findIndex((x) => x.dataset.cat === el.dataset.cat) === i)
     .sort(
       (a, b) =>
@@ -63,50 +62,63 @@ export function startHeroTransition(opts: {
     return;
   }
 
-  // ── 0. prep: capture rects, create overlay ────────────────────────────
-  const sourceRects = labels.map((el) => el.getBoundingClientRect());
+  const cats = labels.map((el) => CATEGORIES.find((c) => c.id === el.dataset.cat)!);
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+
+  // ── build the overlay ────────────────────────────────────────────────
   const overlay = document.createElement('div');
   overlay.setAttribute('data-transition-overlay', '');
   overlay.style.cssText =
-    'position:fixed;inset:0;z-index:1000;pointer-events:none;will-change:transform,opacity;';
+    'position:fixed;inset:0;z-index:1000;pointer-events:none;overflow:hidden;will-change:transform,opacity;';
   document.body.appendChild(overlay);
 
-  const clones = labels.map((el, i) => {
-    const clone = el.cloneNode(true) as HTMLElement;
-    const r = sourceRects[i];
-    clone.style.cssText = `
-      position: fixed;
-      left: ${r.left}px; top: ${r.top}px;
-      width: ${r.width}px; height: ${r.height}px;
-      margin: 0;
-      font-family: var(--font-display);
-      font-size: 30px;
-      font-weight: 600;
-      color: var(--ink);
-      line-height: 1.15;
-      transform-origin: left center;
+  // five full-color panels that sweep in and interlock column-wise
+  const panels = cats.map((c, i) => {
+    const p = document.createElement('div');
+    p.setAttribute('data-transition-panel', c.id);
+    p.style.cssText = `
+      position: absolute;
+      top: 0; bottom: 0;
+      width: ${Math.ceil(W / 5) + 2}px;
+      left: ${i * Math.ceil(W / 5)}px;
+      background: ${c.tint};
       will-change: transform, opacity;
+      transform: translateX(${i % 2 === 0 ? W : -W}px);
     `;
-    overlay.appendChild(clone);
-    return clone;
+    overlay.appendChild(p);
+    return p;
   });
-  const rules = labels.map((_, i) => {
-    const rule = document.createElement('span');
-    const r = sourceRects[i];
-    rule.style.cssText = `
-      position: fixed;
-      left: ${r.left}px; top: ${r.bottom + 6}px;
-      height: 3px; width: 64%;
-      border-radius: 2px;
-      background: var(--cat-${labels[i].dataset.cat});
-      transform-origin: left center;
+
+  // giant words — fly in from off-screen to scattered arrangement
+  const words = cats.map((c) => {
+    const w = document.createElement('div');
+    w.setAttribute('data-transition-word', c.id);
+    w.textContent = c.label;
+    w.style.cssText = `
+      position: absolute;
+      left: 0; top: 0;
+      font-family: var(--font-display);
+      font-size: ${Math.round(Math.min(W * 0.065, 78))}px;
+      font-weight: 800;
+      color: #ffffff;
+      white-space: nowrap;
+      letter-spacing: -0.02em;
+      text-shadow: 0 4px 40px rgba(0,0,0,0.18);
       will-change: transform, opacity;
     `;
-    overlay.appendChild(rule);
-    return rule;
+    overlay.appendChild(w);
+    return w;
   });
 
   const heroRoot = document.querySelector('[data-hero-root]') as HTMLElement | null;
+
+  // scattered resting spots across the color field
+  const restSpots = cats.map((_, i) => ({
+    x: W * (0.05 + 0.14 * i),
+    y: H * (0.16 + 0.17 * ((i * 3) % 5)),
+  }));
+
   const tl = gsap.timeline({
     onComplete: () => {
       overlay.remove();
@@ -114,123 +126,86 @@ export function startHeroTransition(opts: {
     },
   });
 
-  // ── 1. 0–0.35s: hero fades, clones scale up in place, rules stretch ──
-  if (heroRoot) tl.to(heroRoot, { opacity: 0.12, duration: 0.35, ease: 'power2.out' }, 0);
-  tl.to(
-    clones,
-    { scale: 2.2, duration: 0.35, ease: 'power2.inOut', transformOrigin: 'left center' },
-    0,
-  );
-  tl.to(
-    rules,
-    { scaleX: () => Math.min(2.2, (window.innerWidth * 0.4) / (rules[0].getBoundingClientRect().width || 1)), duration: 0.35, ease: 'power2.inOut' },
-    0,
-  );
+  // ── phase 1 (0–0.45s): panels interlock into a color wall; words fly in ──
+  if (heroRoot) tl.to(heroRoot, { opacity: 0.15, duration: 0.35, ease: 'power2.out' }, 0);
+  panels.forEach((p, i) => {
+    tl.to(p, { x: 0, duration: 0.42, ease: 'power3.inOut' }, i * 0.03);
+  });
+  words.forEach((w, i) => {
+    tl.fromTo(
+      w,
+      {
+        x: (i % 2 === 0 ? -1 : 1) * (W * 0.75),
+        y: (Math.random() - 0.5) * H,
+        opacity: 0,
+        rotate: (i % 2 === 0 ? -1 : 1) * 10,
+      },
+      { x: restSpots[i].x, y: restSpots[i].y, opacity: 1, rotate: 0, duration: 0.5, ease: 'power3.inOut' },
+      0.06 + i * 0.035,
+    );
+  });
 
-  // ── 2. t=0.15s: route swap beneath the overlay ─────────────────────────
-  tl.call(swapRoute, undefined, 0.15);
-
-  // ── 3. 0.35–0.75s: fly clones to incoming section titles ──────────────
-  const flyToTargets = () =>
-    clones.map((clone, i) => {
-      const target = document.querySelector<HTMLElement>(
-        `[data-content-page] #${labels[i].dataset.cat} [data-section-title]`,
-      );
-      if (!target) return { clone, dx: 0, dy: 0, sx: 1, alpha: 0 };
-      const tr = target.getBoundingClientRect();
-      const cr = clone.getBoundingClientRect();
-      const dx = tr.left - cr.left;
-      const dy = tr.top - cr.top;
-      // current scale comes from the tween; compute target scale to match width
-      const currentScale = cr.width / sourceRects[i].width;
-      const targetScale = 1; // section titles render at their own size
-      return { clone, dx, dy, sx: targetScale / currentScale, alpha: 1 };
-    });
-
-  tl.to(
-    {
-      // proxy object so the targets are measured at the right moment
-      p: 0,
-    },
-    {
-      p: 1,
-      duration: 0.0001,
-    },
-    0.35,
-  );
-  tl.call(() => {
-    const flights = flyToTargets();
-    for (const f of flights) {
-      gsap.to(f.clone, {
-        x: f.dx,
-        y: f.dy,
-        scale: f.sx,
-        duration: 0.4,
-        ease: 'power3.inOut',
-      });
-      const label = labels[clones.indexOf(f.clone)];
-      const ruleEl = rules[clones.indexOf(f.clone)];
-      const target = document.querySelector<HTMLElement>(
-        `[data-content-page] #${label.dataset.cat} [data-section-title]`,
-      );
-      if (target && ruleEl) {
-        const tr = target.getBoundingClientRect();
-        const rr = ruleEl.getBoundingClientRect();
-        gsap.to(ruleEl, {
-          x: tr.left - rr.left,
-          y: tr.bottom - rr.top,
-          scaleX: 1,
-          duration: 0.4,
-          ease: 'power3.inOut',
-        });
-      }
-    }
-  }, undefined, 0.35);
-
-  // ── 4. 0.75–1.1s: clones fade, real titles/rules/TOC/cards reveal ────
-  tl.to(clones, { opacity: 0, duration: 0.2, stagger: 0.04, ease: 'power1.out' }, 0.75);
-  tl.to(rules, { opacity: 0, duration: 0.2, stagger: 0.04, ease: 'power1.out' }, 0.78);
-  tl.call(() => {
-    const page = document.querySelector('[data-content-page]');
-    if (page instanceof HTMLElement) {
-      page.style.transition = 'opacity 300ms ease';
-      page.style.opacity = '1';
-      // rule wipe + tick stagger + card rise
-      page.querySelectorAll<HTMLElement>('[data-rule]').forEach((rule, i) => {
-        gsap.fromTo(
-          rule,
-          { scaleX: 0 },
-          { scaleX: 1, duration: 0.5, delay: i * 0.06, ease: 'power2.out' },
-        );
-      });
-      const ticks = page.querySelectorAll<HTMLElement>('[data-toc-tick]');
-      gsap.fromTo(
-        ticks,
-        { opacity: 0, x: 12 },
-        { opacity: 1, x: 0, duration: 0.3, stagger: 0.04, delay: 0.2 },
-      );
-      const firstCards = page.querySelectorAll<HTMLElement>('[data-cards] > *');
-      if (firstCards.length) {
-        gsap.fromTo(
-          firstCards,
-          { y: 12 },
-          { y: 0, duration: 0.4, stagger: 0.03, delay: 0.25, ease: 'power2.out' },
-        );
-      }
-    }
-  }, undefined, 0.75);
-
-  // incoming page starts hidden until step 4
+  // ── phase 2 (0.45s): route swap beneath the opaque overlay ───────────
+  tl.call(swapRoute, undefined, 0.45);
   tl.call(
     () => {
       const page = document.querySelector('[data-content-page]');
       if (page instanceof HTMLElement) page.style.opacity = '0';
     },
     undefined,
-    0.16,
+    0.46,
   );
 
-  if (heroRoot) {
-    tl.set(heroRoot, { opacity: 1 }, 1.05);
-  }
+  // ── phase 3 (0.5–0.95s): words converge to section titles; panels fold ─
+  tl.call(
+    () => {
+      const targets = cats.map(
+        (c) => document.querySelector<HTMLElement>(`[data-content-page] #${c.id} [data-section-title]`),
+      );
+      words.forEach((w, i) => {
+        const t = targets[i];
+        if (!t) return;
+        const tr = t.getBoundingClientRect();
+        const wr = w.getBoundingClientRect();
+        gsap.to(w, {
+          x: `+=${tr.left - wr.left}`,
+          y: `+=${tr.top - wr.top}`,
+          scale: 0.34, // giant word shrinks to real title scale
+          duration: 0.45,
+          ease: 'power3.inOut',
+        });
+      });
+      // panels collapse into slim horizontal rule strips (category rules echo)
+      panels.forEach((p, i) => {
+        gsap.to(p, { scaleY: 0.006, y: (i - 2) * 5, opacity: 0.8, duration: 0.45, ease: 'power3.inOut' });
+      });
+    },
+    undefined,
+    0.5,
+  );
+
+  // ── phase 4 (0.95–1.35s): reveal the real page ───────────────────────
+  tl.to(words, { opacity: 0, duration: 0.25, stagger: 0.03, ease: 'power1.out' }, 0.95);
+  tl.to(panels, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0.95);
+  tl.call(
+    () => {
+      const page = document.querySelector('[data-content-page]');
+      if (page instanceof HTMLElement) {
+        page.style.transition = 'opacity 350ms ease';
+        page.style.opacity = '1';
+        page.querySelectorAll<HTMLElement>('[data-rule]').forEach((rule, i) => {
+          gsap.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.5, delay: i * 0.06, ease: 'power2.out' });
+        });
+        const ticks = page.querySelectorAll<HTMLElement>('[data-toc-tick]');
+        gsap.fromTo(ticks, { opacity: 0, x: 12 }, { opacity: 1, x: 0, duration: 0.3, stagger: 0.04, delay: 0.15 });
+        const firstCards = page.querySelectorAll<HTMLElement>('[data-cards] > *');
+        if (firstCards.length) {
+          gsap.fromTo(firstCards, { y: 12 }, { y: 0, duration: 0.4, stagger: 0.03, delay: 0.2, ease: 'power2.out' });
+        }
+      }
+      if (heroRoot) heroRoot.style.opacity = '1';
+    },
+    undefined,
+    1.0,
+  );
 }

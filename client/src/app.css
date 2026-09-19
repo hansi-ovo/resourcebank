@@ -44,6 +44,16 @@ html {
   scroll-behavior: smooth;
 }
 
+/* hide the right-hand page scrollbar (client request); scrolling stays enabled */
+::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+}
+html {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;

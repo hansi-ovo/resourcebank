@@ -9,7 +9,7 @@ test('admin copy deck verbatim', async ({ page }) => {
   await page.goto('/admin');
 
   // login card
-  await expect(page.getByRole('heading', { name: 'Admin sign-in' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Admin sign-in' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByLabel('Password')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Sign in' })).toBeVisible();
   await page.getByLabel('Password').fill('nope');

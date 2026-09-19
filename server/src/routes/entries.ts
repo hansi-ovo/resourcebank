@@ -10,7 +10,8 @@ const patchSchema = z
     name: z.string().trim().min(1).max(300).optional(),
     summary: z.string().trim().min(1).max(2000).optional(),
     url: z.string().trim().url().max(1000).optional(),
-    audience: z.array(z.string().trim().min(1).max(60)).max(12).optional(),
+    audience: z.array(z.string().trim().min(1).max(120)).max(12).optional(),
+    timeline: z.string().trim().max(500).optional(),
     category: z.enum(CATEGORY_IDS).optional(),
   })
   .refine((v) => Object.keys(v).length > 0, 'At least one field');
@@ -64,6 +65,7 @@ export function entriesRoutes(db: Database.Database, bus: Bus): Router {
       url: patch.url ?? existing.url,
       audience: patch.audience ? JSON.stringify(patch.audience) : existing.audience,
       category: patch.category ?? existing.category,
+      timeline: patch.timeline ?? existing.timeline ?? '',
       updated_at: new Date().toISOString(),
     };
     if (next.url !== existing.url) {
@@ -74,7 +76,7 @@ export function entriesRoutes(db: Database.Database, bus: Bus): Router {
       }
     }
     db.prepare(
-      'UPDATE entries SET name=@name, summary=@summary, url=@url, audience=@audience, category=@category, updated_at=@updated_at WHERE id=@id',
+      'UPDATE entries SET name=@name, summary=@summary, url=@url, audience=@audience, category=@category, timeline=@timeline, updated_at=@updated_at WHERE id=@id',
     ).run({ ...next, id });
     // Edits to a published entry change live display content.
     if (existing.status === 'published') bus.emitEntriesChanged();

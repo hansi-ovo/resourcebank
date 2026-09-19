@@ -2,8 +2,10 @@ import { Link } from 'react-router';
 import { cn } from '@/lib/utils';
 
 /**
- * Logo lockup, top-left on every page (brief).
- * Display pages → `/`; admin pages → `/admin` (logo link target per 03-pages §Copy deck).
+ * Logo lockup, top-left on every page (brief). The current logo asset is an
+ * ultra-wide horizontal lockup (10280×2089 ≈ 4.92:1) — sized by height with
+ * auto width so the aspect ratio is never distorted (client issue #1).
+ * Display pages → `/`; admin pages → `/admin` (logo link target per copy deck).
  */
 export function Logo({ to = '/', className }: { to?: '/' | '/admin'; className?: string }) {
   return (
@@ -11,12 +13,18 @@ export function Logo({ to = '/', className }: { to?: '/' | '/admin'; className?:
       to={to}
       aria-label="DKU Leadership Resource Bank"
       className={cn(
-        'inline-flex items-center gap-2.5 rounded-md focus-visible:outline-2 focus-visible:outline-offset-2',
+        'inline-flex items-center rounded-md focus-visible:outline-2 focus-visible:outline-offset-2',
         className,
       )}
       style={{ outlineColor: 'var(--focus)' }}
     >
-      <img src="/logo.png" alt="" width={40} height={40} className="block h-10 w-10" />
+      <img
+        src="/logo.png"
+        alt=""
+        className="block h-9 w-auto max-w-[280px] object-contain"
+        width={176}
+        height={36}
+      />
     </Link>
   );
 }

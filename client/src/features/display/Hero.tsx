@@ -1,18 +1,26 @@
-import { useEffect, useRef, useState } from 'react';
+import { Suspense, useEffect, useRef, useState } from 'react';
+import React from 'react';
 import BlurText from '@/components/react-bits/BlurText';
 import VariableProximity from '@/components/react-bits/VariableProximity';
+import CursorGrid from '@/components/react-bits/CursorGrid';
 import { Logo } from '@/components/ui/Logo';
 import { useReducedMotion } from '@/lib/motion';
 import { CATEGORIES } from 'shared/types';
 import './hero.css';
 
+// matter-js (FallingText's physics engine) is ~50KB gz — load the falling bed
+// AFTER first paint so it never blocks the hero's critical path.
+const FallingText = React.lazy(() =>
+  import('@/components/react-bits/FallingText').then((m) => ({ default: m.default })),
+);
+
 /** First published seed entry name per category — showcase items (⚑ client re-picks). */
 const SHOWCASE_ITEMS: Record<string, string> = {
-  'on-campus': 'DKU Leadership Fellows Program',
+  'on-campus': 'Student Leaders Board',
   fellowships: 'Laidlaw Scholars',
-  experiential: 'McKinsey Discovery Undergraduate Program',
-  events: 'HPAIR',
-  training: 'NOLS Wilderness Leadership Course',
+  experiential: 'Harvard HSYLC',
+  events: 'Yenching Global Symposium',
+  training: 'Climate X Leadership Training',
 };
 
 const KEYWORD_TINTS: Array<{ word: string; tint: string }> = [
@@ -23,38 +31,67 @@ const KEYWORD_TINTS: Array<{ word: string; tint: string }> = [
 ];
 
 /**
- * Display hero `/` (03-pages §Display hero).
- * Split 7/5: BlurText title → gradient reveal body (keyword tints, 1.06em
- * scale) → CTA; post-reveal VariableProximity on the title; right = showcase
- * strip ladder (drift up, docked emphasis, hover pause); mobile = static pills.
+ * Falling-word pool (client request 3c.iii): drawn from the site description
+ * + the client's content sheet program names. Words fall into a ~1/5-height
+ * low-opacity bed behind the hero content.
+ */
+const FALLING_WORDS = [
+  'leadership', 'fellowships', 'scholarships', 'experiences', 'opportunities',
+  'schwarzman', 'rhodes', 'fulbright', 'yenching', 'millennium', 'erasmus',
+  'campus', 'conference', 'symposium', 'training', 'mentorship', 'research',
+  'community', 'global', 'programs', 'discovery', 'growth', 'impact', 'summit',
+  'advising', 'consulting', 'sustainability', 'entrepreneurship', 'exchange',
+  'princeton', 'harvard', 'oxford', 'tsinghua', 'peking', 'duke', 'kunshan',
+];
+
+/**
+ * Display hero `/` (03-pages §Display hero + client revision requests).
+ * Split 7/5; 2s sequential reveal (title → subtitle → description → CTA);
+ * CursorGrid mouse effect; falling-letters background bed; faster showcase
+ * drift with prominent docked emphasis.
  */
 export function Hero({ onStarted }: { onStarted: () => void }) {
   const reduced = useReducedMotion();
   const leftRef = useRef<HTMLDivElement>(null);
   const [titleSettled, setTitleSettled] = useState(false);
-  const titleRef = useRef<HTMLHeadingElement>(null);
 
-  // Reduced motion: skip BlurText/VP entirely; title settles immediately.
   useEffect(() => {
     if (reduced) setTitleSettled(true);
   }, [reduced]);
 
   return (
     <div className="hero-root" data-hero-root>
+      {/* mouse-follow grid in theme green/blue (request 3c.ii) */}
+      {!reduced ? (
+        <CursorGrid
+          className="hero-cursor-grid"
+          cellSize={56}
+          color="#336472"
+          radius={150}
+          falloff="smooth"
+          maxOpacity={0.35}
+          lineWidth={1}
+          fillOpacity={0.05}
+          gridOpacity={0.04}
+          clickPulse={false}
+        />
+      ) : null}
+
       <header className="hero-header">
         <Logo />
       </header>
 
       <main className="hero-main">
         <div className="hero-left" ref={leftRef}>
-          <h1 className="hero-title" ref={titleRef} aria-label="DKU Leadership Resource Bank">
+          <h1 className="hero-title" aria-label="DKU Leadership Resource Bank">
             {reduced ? (
               <span className="hero-title-static">DKU Leadership Resource Bank</span>
             ) : (
               <>
-                {/* BlurText stays mounted (display:none after settle) so its
-                    IntersectionObserver teardown never races the unobserve. */}
-                <span style={{ display: titleSettled ? 'none' : 'contents' }}>
+                <span
+                  className="hero-title-blur-stage"
+                  style={{ visibility: titleSettled ? 'hidden' : 'visible' }}
+                >
                   <BlurText
                     text="DKU Leadership Resource Bank"
                     delay={80}
@@ -63,7 +100,11 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
                     onAnimationComplete={() => setTitleSettled(true)}
                   />
                 </span>
-                {titleSettled ? (
+                <span
+                  className="hero-title-vp-stage"
+                  style={{ display: titleSettled ? 'block' : 'none' }}
+                  aria-hidden={!titleSettled}
+                >
                   <VariableProximity
                     label="DKU Leadership Resource Bank"
                     containerRef={leftRef}
@@ -73,25 +114,21 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
                     falloff="gaussian"
                     className="hero-title-vp"
                   />
-                ) : null}
+                </span>
               </>
             )}
           </h1>
 
-          <div
-            className={`hero-reveal ${titleSettled || reduced ? 'is-in' : ''}`}
-            style={reduced ? { transitionDuration: '200ms' } : undefined}
-          >
+          {/* 2s sequential reveal: subtitle (0.7s) → description (1.3s) → CTA (1.9s) */}
+          <div className={`hero-seq ${titleSettled || reduced ? 'is-on' : ''}`}>
             <p className="hero-subtitle">Discover Opportunities Beyond the Classroom</p>
             <p className="hero-body">
               Leadership development does not happen in a single program—it happens through a series
-              of{' '}
-              <TintedWord word="experiences" />
-              . This Resource Bank is curated by DKU Leadership Programs to help students discover
-              high-quality opportunities inside and outside Duke Kunshan University, including{' '}
-              <TintedWord word="Fellowships" />
-              , <TintedWord word="Event" />
-              , <TintedWord word="Conference" />, and other developmental experiences.
+              of <TintedWord word="experiences" />. This Resource Bank is curated by DKU Leadership
+              Programs to help students discover high-quality opportunities inside and outside Duke
+              Kunshan University, including <TintedWord word="Fellowships" />,{' '}
+              <TintedWord word="Event" />, <TintedWord word="Conference" />, and other
+              developmental experiences.
             </p>
             <button type="button" className="hero-cta" onClick={onStarted}>
               Get started!
@@ -101,6 +138,21 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
 
         <ShowcaseStrip reduced={reduced} />
       </main>
+
+      {/* falling-letters bed (request 3c.iii) — lazy: physics engine off the
+          critical path; words start dropping in shortly after paint */}
+      {!reduced ? (
+        <div className="hero-fall-bed" aria-hidden="true">
+          <Suspense fallback={null}>
+            <FallingText
+              text={FALLING_WORDS.join(' ')}
+              trigger="auto"
+              gravity={0.9}
+              fontSize="15px"
+            />
+          </Suspense>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -115,16 +167,15 @@ function TintedWord({ word }: { word: string }) {
 }
 
 /**
- * Showcase strip (D20): flat 2D vertical ladder. Items drift upward through a
- * fixed "docked" highlight zone (full opacity + full size + longer underline);
- * neighbors 45% opacity / 0.92 scale; hover pauses. Mobile <960px: static pills.
+ * Showcase strip (D20 + request 3c.iv): faster drift (18px/s), stronger
+ * non-docked demotion, bolder docked treatment.
  */
 function ShowcaseStrip({ reduced }: { reduced: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
   const [paused, setPaused] = useState(false);
   const offsetRef = useRef(0);
-  const itemHeight = 96; // px per ladder step
-  const viewportH = 384; // 4 slots visible
+  const itemHeight = 96;
+  const viewportH = 384;
 
   useEffect(() => {
     if (reduced || paused) return;
@@ -134,7 +185,7 @@ function ShowcaseStrip({ reduced }: { reduced: boolean }) {
     let last = performance.now();
     let activeRow = -1;
 
-    const DRIFT_PX_PER_S = 6; // slow drift
+    const DRIFT_PX_PER_S = 18; // faster (was 6)
     const total = CATEGORIES.length * itemHeight;
 
     const tick = (now: number) => {
@@ -142,12 +193,8 @@ function ShowcaseStrip({ reduced }: { reduced: boolean }) {
       last = now;
       offsetRef.current = (offsetRef.current + DRIFT_PX_PER_S * dt) % total;
       const y = offsetRef.current;
-
-      // translate-only transform (GSAP-equivalent, rAF-driven; stays on GPU).
-      // 3 copies — keep the viewport inside the middle copy for seamless wrap.
       el.style.transform = `translate3d(0, ${-(total + y)}px, 0)`;
 
-      // fixed dock zone = viewport middle band; find the row under it
       const zoneCenter = (total * 1 + y + viewportH / 2) / itemHeight;
       const row = Math.floor(zoneCenter);
       if (row !== activeRow) {
@@ -163,7 +210,7 @@ function ShowcaseStrip({ reduced }: { reduced: boolean }) {
     return () => cancelAnimationFrame(raf);
   }, [reduced, paused]);
 
-  const rows = [...CATEGORIES, ...CATEGORIES, ...CATEGORIES]; // wrap runway
+  const rows = [...CATEGORIES, ...CATEGORIES, ...CATEGORIES];
 
   return (
     <aside

@@ -106,28 +106,41 @@ export function ContentPage() {
     }
   }, [sections, reduced]);
 
-  // ScrollTrigger section reveals (12px rise + rule wipe, once)
+  // ScrollTrigger reveals (request 4c): section title rise + rule wipe once,
+  // plus a smooth per-card fade-in as cards enter the viewport.
   useEffect(() => {
     if (reduced) return;
     const ctx = gsap.context(() => {
       document.querySelectorAll<HTMLElement>('.content-section').forEach((section) => {
         const title = section.querySelector('[data-section-title]');
         const rule = section.querySelector('[data-rule]');
-        const grid = section.querySelector('[data-cards]');
         const tl = gsap.timeline({
           scrollTrigger: { trigger: section, start: 'top 78%', once: true },
         });
         if (title)
-          tl.fromTo(title, { y: 12, opacity: 0 }, { y: 0, opacity: 1, duration: 0.4, ease: 'power2.out' }, 0);
-        if (rule)
-          tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.45, ease: 'power2.out' }, 0.05);
-        if (grid)
           tl.fromTo(
-            grid,
-            { y: 12, opacity: 0 },
-            { y: 0, opacity: 1, duration: 0.4, ease: 'power2.out' },
-            0.1,
+            title,
+            { y: 14, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' },
+            0,
           );
+        if (rule)
+          tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.65, ease: 'power2.out' }, 0.05);
+        const cards = section.querySelectorAll<HTMLElement>('[data-cards] > .opportunity-card');
+        if (cards.length) {
+          gsap.fromTo(
+            cards,
+            { y: 18, opacity: 0 },
+            {
+              y: 0,
+              opacity: 1,
+              duration: 0.6,
+              stagger: 0.08,
+              ease: 'power2.out',
+              scrollTrigger: { trigger: section, start: 'top 72%', once: true },
+            },
+          );
+        }
       });
     });
     return () => ctx.revert();

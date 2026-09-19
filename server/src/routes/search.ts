@@ -30,8 +30,8 @@ export function searchRoutes(deps: SearchDeps): Router {
   const router = Router();
 
   const insertDraft = db.prepare(
-    `INSERT INTO entries (name, summary, url, audience, starts_at, ends_at, category, image_url, quality, status, source, created_at, updated_at)
-     VALUES (@name, @summary, @url, @audience, @startsAt, @endsAt, @category, @imageUrl, @quality, 'review', 'search', @now, @now)`,
+    `INSERT INTO entries (name, summary, url, audience, starts_at, ends_at, timeline, category, image_url, quality, status, source, created_at, updated_at)
+     VALUES (@name, @summary, @url, @audience, @startsAt, @endsAt, @timeline, @category, @imageUrl, @quality, 'review', 'search', @now, @now)`,
   );
 
   function runJob(jobId: number, prompt: string, scope: 'all' | (typeof CATEGORY_IDS)[number]): void {
@@ -52,6 +52,7 @@ export function searchRoutes(deps: SearchDeps): Router {
                   audience: JSON.stringify(d.audience),
                   startsAt: d.startsAt,
                   endsAt: d.endsAt,
+                  timeline: d.timeline ?? '',
                   category: d.category,
                   imageUrl: placeholderFor(d.imageUrl, d.category),
                   quality: d.quality,

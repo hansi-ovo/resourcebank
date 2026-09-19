@@ -182,7 +182,7 @@ export function ContentManagementTab() {
 
                   <td className="px-3 py-2">
                     <span className="num block whitespace-nowrap text-[13px] text-ink-soft">
-                      {formatDateRange(e.startsAt, e.endsAt) || '\u00A0'}
+                      {formatDateRange(e.startsAt, e.endsAt) || (e.timeline ?? '').replace(/\n/g, ' ') || '\u00A0'}
                     </span>
                   </td>
 

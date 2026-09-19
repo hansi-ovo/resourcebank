@@ -46,6 +46,7 @@ export function applyDiffToEntry(db: Database.Database, bus: Bus, entry: Entry, 
     audience: JSON.stringify(entry.audience),
     starts_at: entry.startsAt,
     ends_at: entry.endsAt,
+    timeline: entry.timeline,
     category: entry.category,
     image_url: entry.imageUrl,
     updated_at: new Date().toISOString(),
@@ -60,6 +61,7 @@ export function applyDiffToEntry(db: Database.Database, bus: Bus, entry: Entry, 
         break;
       case 'startsAt': next.starts_at = d.to || null; break;
       case 'endsAt': next.ends_at = d.to || null; break;
+      case 'timeline': next.timeline = d.to; break;
       case 'category':
         if ((CATEGORY_IDS as readonly string[]).includes(d.to)) next.category = d.to;
         break;
@@ -68,8 +70,8 @@ export function applyDiffToEntry(db: Database.Database, bus: Bus, entry: Entry, 
   }
   db.prepare(
     `UPDATE entries SET name=@name, summary=@summary, url=@url, audience=@audience,
-     starts_at=@starts_at, ends_at=@ends_at, category=@category, image_url=@image_url,
-     source='update-apply', updated_at=@updated_at WHERE id=@id`,
+     starts_at=@starts_at, ends_at=@ends_at, timeline=@timeline, category=@category,
+     image_url=@image_url, source='update-apply', updated_at=@updated_at WHERE id=@id`,
   ).run({ ...next, id: entry.id });
   bus.emitEntriesChanged();
   return toEntry(db.prepare('SELECT * FROM entries WHERE id = ?').get(entry.id) as Row);

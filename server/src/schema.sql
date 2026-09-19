@@ -9,6 +9,7 @@ CREATE TABLE IF NOT EXISTS entries (
   audience     TEXT NOT NULL,            -- JSON array of strings
   starts_at    TEXT,                     -- ISO date, nullable
   ends_at      TEXT,                     -- ISO date, nullable (deadline)
+  timeline     TEXT NOT NULL DEFAULT '', -- free-text application timeline
   category     TEXT NOT NULL CHECK (category IN ('on-campus','fellowships','experiential','events','training')),
   image_url    TEXT,
   quality      INTEGER,

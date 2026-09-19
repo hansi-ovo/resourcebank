@@ -16,6 +16,7 @@ function diffValue(field: UpdateDiffItem['field'], v: string): string {
     }
   }
   if ((field === 'startsAt' || field === 'endsAt') && v) return formatProgramDate(v);
+  if (field === 'timeline' && v) return v.replace(/\n/g, ' · ');
   return v || '—';
 }
 
@@ -26,6 +27,7 @@ const FIELD_LABELS: Record<UpdateDiffItem['field'], string> = {
   audience: 'Audience',
   startsAt: 'Start date',
   endsAt: 'Deadline',
+  timeline: 'Application timeline',
   category: 'Category',
   imageUrl: 'Image',
 };

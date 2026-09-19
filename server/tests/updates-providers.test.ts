@@ -28,8 +28,8 @@ describe('MockSearchProvider scoring (01-architecture §4)', () => {
   });
 
   it('keyword hits raise matching entries', async () => {
-    const out = await provider.search('wilderness outdoor expedition', 'all', new Set());
-    expect(out[0]!.name).toContain('NOLS');
+    const out = await provider.search('climate youth sustainability training action', 'all', new Set());
+    expect(out[0]!.name).toContain('Climate X');
   });
 
   it('returns at most 30 drafts', async () => {

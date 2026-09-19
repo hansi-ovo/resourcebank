@@ -1,6 +1,14 @@
 import { useEffect, useId, useRef, useState } from 'react';
 import type { Entry } from 'shared/types';
 import { formatDateRange, displayImageUrl } from '@/lib/format';
+
+/** Dates line: ISO date range when present, else the client sheet's free-text
+ *  application timeline (e.g. "Session 3 Week 6 - Session 4 Week 1"). */
+function datesText(entry: Entry): string {
+  const range = formatDateRange(entry.startsAt, entry.endsAt);
+  if (range) return range;
+  return (entry.timeline ?? '').replace(/\n/g, ' · ');
+}
 import { CloseIcon } from '@/features/admin/icons';
 import './EntryModal.css';
 
@@ -14,6 +22,7 @@ export function EntryModal({ entry, onClose }: { entry: Entry; onClose: () => vo
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();
   const [imgBroken, setImgBroken] = useState(false);
+  const datesLine = datesText(entry);
 
   // focus trap + key handling
   useEffect(() => {
@@ -107,9 +116,7 @@ export function EntryModal({ entry, onClose }: { entry: Entry; onClose: () => vo
             ))}
           </div>
 
-          <p className="modal-dates num">
-            {formatDateRange(entry.startsAt, entry.endsAt) || ' '}
-          </p>
+          <p className="modal-dates num">{datesLine}</p>
 
           <a
             className="modal-visit"

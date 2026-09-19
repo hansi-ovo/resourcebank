@@ -45,6 +45,7 @@ export interface Entry {
   audience: string[]; // free-form tags
   startsAt: string | null; // ISO date
   endsAt: string | null; // ISO date (deadline)
+  timeline: string; // free-text application timeline (client sheet format, e.g. "Session 3 Week 6 - Session 4 Week 1")
   category: CategoryId;
   imageUrl: string | null;
   quality: number | null; // mock AI confidence 1–100
@@ -62,13 +63,23 @@ export interface EntryDraft {
   audience: string[];
   startsAt: string | null;
   endsAt: string | null;
+  timeline: string;
   category: CategoryId;
   imageUrl: string | null;
   quality: number; // 1–100
 }
 
 export interface UpdateDiffItem {
-  field: 'name' | 'summary' | 'url' | 'audience' | 'startsAt' | 'endsAt' | 'category' | 'imageUrl';
+  field:
+    | 'name'
+    | 'summary'
+    | 'url'
+    | 'audience'
+    | 'startsAt'
+    | 'endsAt'
+    | 'timeline'
+    | 'category'
+    | 'imageUrl';
   from: string;
   to: string;
   note: string; // one human line, e.g. "Deadline moved from Mar 1 to Mar 15, 2027"
@@ -116,4 +127,5 @@ export interface EntryPatch {
   url?: string;
   audience?: string[];
   category?: CategoryId;
+  timeline?: string;
 }

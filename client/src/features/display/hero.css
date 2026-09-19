@@ -1,10 +1,26 @@
-/* Display hero — layout per 02-design-system §3 (split 7/5). */
+/* Display hero — layout per 02-design-system §3 (split 7/5) + client revisions. */
 
 .hero-root {
+  position: relative;
   min-height: 100vh;
   background: var(--canvas);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+}
+
+/* CursorGrid canvas: absolute full-bleed under content */
+.hero-cursor-grid {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.hero-root > header,
+.hero-root > main {
+  position: relative;
+  z-index: 2;
 }
 
 .hero-header {
@@ -19,21 +35,23 @@
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: 4vh 32px 8vh;
+  padding: 4vh 32px 10vh;
   align-items: center;
+  z-index: 2;
 }
 
 .hero-left {
   display: flex;
   flex-direction: column;
-  gap: 28px;
+  gap: 26px;
 }
 
 .hero-title {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   line-height: 1.04;
-  font-weight: 640;
+  /* bolder initial weight (request 3b) — was 640 */
+  font-weight: 740;
   letter-spacing: -0.015em;
   color: var(--ink);
   min-height: 1.1em;
@@ -50,32 +68,65 @@
 
 .hero-title-vp span {
   font-family: var(--font-display);
+  font-weight: 740;
 }
 
-/* reveal: subtitle + body + CTA fade in masked lines after title settles */
-.hero-reveal {
+/* ── sequential 2s reveal (request 3c.i) ─────────────────────────────
+   title settles first (BlurText), then:
+   subtitle at 0s → description at 0.6s → CTA at 1.2s (each 0.8s fade) */
+.hero-seq {
   display: flex;
   flex-direction: column;
   gap: 18px;
   max-width: 70ch;
-  opacity: 0;
-  transform: translateY(8px);
-  transition:
-    opacity 600ms ease,
-    transform 600ms cubic-bezier(0.23, 1, 0.32, 1);
-  transition-delay: 120ms;
 }
 
-.hero-reveal.is-in {
-  opacity: 1;
+.hero-seq > * {
+  opacity: 0;
   transform: none;
 }
 
+.hero-seq.is-on > * {
+  animation: hero-fade-in 800ms ease forwards;
+}
+
+.hero-seq.is-on .hero-subtitle {
+  animation-delay: 0s;
+}
+
+.hero-seq.is-on .hero-body {
+  animation-delay: 600ms;
+}
+
+.hero-seq.is-on .hero-cta {
+  animation-delay: 1200ms;
+}
+
+@keyframes hero-fade-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ── subtitle restyle (request 3a): bigger, bolder, tinted, underlined ── */
 .hero-subtitle {
+  margin: 0;
   font-family: var(--font-display);
-  font-size: var(--fs-sub);
-  font-weight: 520;
-  color: var(--ink);
+  font-size: clamp(24px, 3vw, 34px);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+  color: var(--cat-on-campus);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in oklab, var(--cat-on-campus) 45%, transparent);
+  text-decoration-thickness: 3px;
+  text-underline-offset: 8px;
+  width: fit-content;
 }
 
 .hero-body {
@@ -116,21 +167,41 @@
   transform: scale(0.98);
 }
 
-/* ── showcase strip (D20) ─────────────────────────────────────────── */
+/* ── falling-letters bed (request 3c.iii) ────────────────────────────
+   ~1/5 viewport height, pinned to the bottom, behind content, low opacity */
+.hero-fall-bed {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 20vh;
+  z-index: 1;
+  opacity: 0.16;
+  pointer-events: none;
+  font-weight: 500;
+  color: var(--cat-on-campus);
+}
+
+.hero-fall-bed > div {
+  height: 100%;
+}
+
+/* ── showcase strip (D20 + request 3c.iv) ──────────────────────────── */
 
 .showcase {
   position: relative;
   align-self: stretch;
   display: flex;
   align-items: center;
+  z-index: 2;
 }
 
 .showcase-viewport {
   position: relative;
   width: 100%;
-  height: 384px; /* 4 slots visible; 1 docked */
+  height: 384px;
   overflow: hidden;
-  mask-image: linear-gradient(to bottom, transparent, black 18%, black 82%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, black 14%, black 86%, transparent);
 }
 
 .showcase-list {
@@ -145,18 +216,19 @@
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  opacity: 0.45;
-  transform: scale(0.92);
+  opacity: 0.35;
+  transform: scale(0.88);
   transform-origin: left center;
   padding-left: 28px;
   transition:
-    opacity 300ms ease,
-    transform 300ms ease;
+    opacity 240ms ease,
+    transform 240ms ease;
 }
 
+/* stronger docked emphasis (request 3c.iv) */
 .showcase-item.is-docked {
   opacity: 1;
-  transform: scale(1);
+  transform: scale(1.02);
 }
 
 .showcase-label {
@@ -165,17 +237,26 @@
   font-weight: 600;
   color: var(--ink);
   line-height: 1.15;
+  transition: color 240ms ease;
+}
+
+.showcase-item.is-docked .showcase-label {
+  color: var(--cat);
+  font-weight: 720;
 }
 
 .showcase-rule {
   height: 3px;
-  width: 64%;
+  width: 56%;
   border-radius: 2px;
-  background: var(--cat);
+  background: color-mix(in oklab, var(--cat) 45%, white);
+  transition: width 240ms ease, background-color 240ms ease;
 }
 
 .showcase-item.is-docked .showcase-rule {
-  width: 88%;
+  width: 92%;
+  height: 4px;
+  background: var(--cat);
 }
 
 .showcase-item-name {
@@ -183,6 +264,11 @@
   font-size: 14px;
   font-weight: 500;
   color: var(--ink-soft);
+}
+
+.showcase-item.is-docked .showcase-item-name {
+  font-weight: 650;
+  color: var(--ink);
 }
 
 /* mobile: static tinted pills */
@@ -213,14 +299,25 @@
     color: color-mix(in oklab, var(--cat) 70%, #1a2b2a);
     justify-self: start;
   }
+  .hero-fall-bed {
+    height: 14vh;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hero-reveal {
-    transition: opacity 200ms ease;
-    transform: none;
+  .hero-seq > * {
+    animation: hero-fade-in-reduced 200ms ease forwards;
   }
   .showcase-list {
     transform: none !important;
+  }
+}
+
+@keyframes hero-fade-in-reduced {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }

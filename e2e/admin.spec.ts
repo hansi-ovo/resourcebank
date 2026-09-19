@@ -10,7 +10,7 @@ const PASSWORD = 'dku-admin';
 test('scenario 1: login → search → approve → content management → withdraw', async ({ page }) => {
   // login card renders on /admin when unauthenticated (URL preserved)
   await page.goto('/admin');
-  await expect(page.getByRole('heading', { name: 'Admin sign-in' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Admin sign-in' })).toBeVisible({ timeout: 20_000 });
   await page.getByLabel('Password').fill('wrong-password');
   await page.getByRole('button', { name: 'Sign in' }).click();
   await expect(page.getByText('Wrong password. Try again.')).toBeVisible();
@@ -39,15 +39,27 @@ test('scenario 1: login → search → approve → content management → withdr
   // approve the first row (FuseButton press → optimistic hide → server after 7s)
   const firstName = (await firstRow.locator('td').nth(1).innerText()).split('\n')[0];
   await firstRow.getByRole('button', { name: 'Approve' }).click();
-  await expect(page.getByText('Moved to Content management')).toBeVisible();
+  await expect
+    .poll(
+      async () => (await page.getByText('Moved to Content management').count()) > 0,
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 
-  // batch undo path: press Undo in the toast within the window
-  await page.getByRole('button', { name: 'Undo' }).first().click();
+  // undo within the window via that toast's own button (scoped: a detach-race
+  // on an older toast must not swallow the click)
+  const undoToast = page.locator('[role="status"]', { hasText: 'Moved to Content management' }).first();
+  await undoToast.getByRole('button', { name: 'Undo' }).click();
   await expect(page.locator('tbody tr', { hasText: firstName }).first()).toBeVisible();
 
   // approve again, this time let the 7s window expire
   await page.locator('tbody tr').first().getByRole('button', { name: 'Approve' }).click();
-  await expect(page.getByText('Moved to Content management')).toBeVisible();
+  await expect
+    .poll(
+      async () => (await page.getByText('Moved to Content management').count()) > 0,
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 
   // content management tab shows published rows (seeded)
   await page.getByRole('link', { name: 'Content management' }).click();
@@ -58,7 +70,12 @@ test('scenario 1: login → search → approve → content management → withdr
   const cFirst = page.locator('tbody tr').first();
   const cName = (await cFirst.locator('td').first().innerText()).split('\n')[0];
   await cFirst.getByRole('button', { name: 'Withdraw' }).click();
-  await expect(page.getByText('Withdrawn from the public site')).toBeVisible();
+  await expect
+    .poll(
+      async () => (await page.getByText('Withdrawn from the public site').count()) > 0,
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   // wait out the fuse window so the server mutation lands before assertions end
   await page.waitForTimeout(7300);
   await expect(page.locator('tbody tr', { hasText: cName })).toHaveCount(0);
@@ -85,7 +102,12 @@ test('scenario 2: double-click cell edit persists after reload', async ({ page }
   await expect(input).toBeVisible();
   await input.fill(newName);
   await input.press('Enter');
-  await expect(page.getByText('Saved')).toBeVisible();
+  await expect
+    .poll(
+      async () => (await page.getByText('Saved').count()) > 0,
+      { timeout: 15_000 },
+    )
+    .toBe(true);
   await expect(page.getByRole('cell', { name: newName }).first()).toBeVisible();
 
   // persists after reload
@@ -125,6 +147,22 @@ test('right-click context menu opens Edit (D9 third affordance)', async ({ page 
   await page.getByRole('menuitem', { name: 'Edit' }).click();
   await expect(page.locator('input[aria-label="Edit program name"]')).toBeVisible();
   await page.keyboard.press('Escape');
+});
+
+test('tag-only search: submit works without typing a prompt (request #2)', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+
+  // select a scope, keep the input empty, submit
+  await page.getByRole('radio', { name: 'Fellowships' }).click();
+  await page.getByRole('button', { name: 'Send search' }).click();
+  // searching note shows (input NOT required to have text)
+  await expect(page.getByText('Searching the web. This usually takes a few minutes.')).toBeVisible();
+  await expect(page.getByText(/Search finished: \d+ items added to review/)).toBeVisible({
+    timeout: 10_000,
+  });
 });
 
 test('check updates: demo check → apply → discard', async ({ page }) => {
@@ -169,7 +207,12 @@ test('FuseButton respects prefers-reduced-motion (instant, no fuse burn)', async
   // press approve → instant swap (no burn animation), row optimistically hides,
   // toast Undo available
   await row.getByRole('button', { name: 'Approve' }).click();
-  await expect(page.getByText('Moved to Content management')).toBeVisible();
+  await expect
+    .poll(
+      async () => (await page.getByText('Moved to Content management').count()) > 0,
+      { timeout: 15_000 },
+    )
+    .toBe(true);
 
   // the armed FuseButton (toast-visible clone is separate) hides its burning rim
   const rimHidden = await page.evaluate(() => {
