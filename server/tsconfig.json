@@ -5,15 +5,12 @@
     "moduleResolution": "bundler",
     "lib": ["ES2022"],
     "types": ["node"],
-    "outDir": "dist",
-    "rootDir": "..",
-    "emitDeclarationOnly": false,
     "strict": true,
+    "noEmit": true,
     "skipLibCheck": true,
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
-    "forceConsistentCasingInFileNames": true,
-    "noEmit": false
+    "forceConsistentCasingInFileNames": true
   },
-  "include": ["src", "../shared/types.ts", "../shared/seed-data.ts"]
+  "include": ["src", "tests", "../shared/types.ts", "../shared/seed-data.ts"]
 }
