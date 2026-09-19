@@ -1,0 +1,98 @@
+@import 'tailwindcss';
+@import './styles/tokens.css';
+@import '@fontsource-variable/bricolage-grotesque';
+@import '@fontsource/public-sans/400.css';
+@import '@fontsource/public-sans/500.css';
+@import '@fontsource/public-sans/600.css';
+@import '@fontsource/public-sans/700.css';
+
+/*
+ * Map design tokens into Tailwind theme utilities.
+ * Tailwind v4 @theme creates utilities (bg-canvas, text-ink, border-mist, etc.)
+ */
+@theme inline {
+  --color-canvas: var(--canvas);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-mist: var(--mist);
+  --color-surface: var(--surface);
+  --color-focus: var(--focus);
+  --color-brand-blue: var(--brand-blue);
+
+  --color-cat-on-campus: var(--cat-on-campus);
+  --color-cat-fellowships: var(--cat-fellowships);
+  --color-cat-experiential: var(--cat-experiential);
+  --color-cat-events: var(--cat-events);
+  --color-cat-training: var(--cat-training);
+  --color-ramp-mid: var(--ramp-mid);
+
+  --font-display: var(--font-display);
+  --font-body: var(--font-body);
+}
+
+:root {
+  /* fluid type scale */
+  --fs-display: clamp(48px, 7.2vw, 76px);
+  --fs-section: clamp(32px, 4.4vw, 40px);
+  --fs-sub: clamp(20px, 2.6vw, 24px);
+  --fs-body: 16px;
+  --fs-small: 14px;
+  --fs-meta: 13px;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  font-family: var(--font-body);
+  font-size: var(--fs-body);
+  line-height: 1.6;
+  background: var(--canvas);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+/* tabular numerals for dates/counts */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* visible 2px focus ring everywhere; Tailwind utilities compose on top */
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+::selection {
+  background: color-mix(in oklab, var(--cat-on-campus) 24%, white);
+}
+
+/* shared: category chip (10% tint bg, cat-color text, pill) */
+.chip-cat {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: var(--fs-meta);
+  font-weight: 600;
+  line-height: 1.5;
+  background: color-mix(in oklab, var(--cat, var(--cat-on-campus)) 10%, white);
+  color: color-mix(in oklab, var(--cat, var(--cat-on-campus)) 88%, #1a2b2a);
+}
+/* 70% text variant per design math; used on tint backgrounds */
+.chip-cat-70 {
+  color: color-mix(in oklab, var(--cat, var(--cat-on-campus)) 70%, #1a2b2a);
+}
+.chip-cat-100 {
+  color: var(--cat, var(--cat-on-campus));
+}

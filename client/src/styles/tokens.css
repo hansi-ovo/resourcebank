@@ -1,0 +1,45 @@
+/*
+ * Design tokens — single source of truth (02-design-system.md §1–2).
+ * Consumed by Tailwind v4 via @theme inline mapping in app.css.
+ */
+:root {
+  /* base palette */
+  --canvas: #f7f9f7;
+  --ink: #1a2b2a;
+  --ink-soft: #52655f;
+  --mist: #e3ece9;
+  --surface: #ffffff;
+  --focus: #006633;
+  --brand-blue: #003399;
+
+  /* category tonal ramp (D19) — green → blue */
+  --cat-on-campus: #3e7a5c;
+  --cat-fellowships: #33605b;
+  --cat-experiential: #336472;
+  --cat-events: #3f5f85;
+  --cat-training: #465891;
+  --ramp-mid: #336472;
+  --ramp-mid-deep: #2b5361; /* ramp mid deepened ~8% for hover */
+
+  /* fonts */
+  --font-display:
+    'Bricolage Grotesque Variable', 'Bricolage Grotesque', Georgia, serif;
+  --font-body: 'Public Sans', 'Segoe UI', system-ui, sans-serif;
+}
+
+/* per-category accent convenience */
+[data-cat='on-campus'] {
+  --cat: var(--cat-on-campus);
+}
+[data-cat='fellowships'] {
+  --cat: var(--cat-fellowships);
+}
+[data-cat='experiential'] {
+  --cat: var(--cat-experiential);
+}
+[data-cat='events'] {
+  --cat: var(--cat-events);
+}
+[data-cat='training'] {
+  --cat: var(--cat-training);
+}
