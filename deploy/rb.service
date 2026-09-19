@@ -1,0 +1,30 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# DKU Leadership Resource Bank — systemd unit (D14 facts pending; defaults per
+# 01-architecture §9: Linux, Node 20, server dist at /opt/resourcebank).
+# Install: cp deploy/rb.service /etc/systemd/system/ && systemctl enable --now rb
+# ─────────────────────────────────────────────────────────────────────────────
+
+[Unit]
+Description=DKU Leadership Resource Bank API server
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/resourcebank
+ExecStart=/usr/bin/node server/dist/index.js
+Restart=on-failure
+RestartSec=5
+Environment=NODE_ENV=production
+EnvironmentFile=/opt/resourcebank/.env
+
+# hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/opt/resourcebank/data
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

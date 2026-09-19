@@ -1,0 +1,5 @@
+# DKU Leadership Resource Bank — backup cron
+# Install: sudo cp deploy/crontab.example /etc/cron.d/rb-backup
+# (ensure the script path matches your install location)
+
+0 3 * * * root /opt/resourcebank/deploy/backup.sh >> /var/log/rb-backup.log 2>&1
