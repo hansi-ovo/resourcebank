@@ -41,15 +41,27 @@ export class RateLimiter {
   private hits = new Map<string, number[]>();
   constructor(private max: number, private windowMs: number) {}
 
-  check(key: string, now: number): boolean {
+  /**
+   * Records an attempt for `key`. When `count=true` the attempt consumes
+   * budget (use for failed logins); `count=false` only checks the budget.
+   */
+  check(key: string, now: number, count: boolean): boolean {
     const arr = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
     if (arr.length >= this.max) {
       this.hits.set(key, arr);
       return false;
     }
-    arr.push(now);
+    if (count) arr.push(now);
     this.hits.set(key, arr);
     return true;
+  }
+
+  /** Marks the latest window state for a key (used to convert check→count
+   *  after a failure is confirmed). */
+  count(key: string, now: number): void {
+    const arr = (this.hits.get(key) ?? []).filter((t) => now - t < this.windowMs);
+    arr.push(now);
+    this.hits.set(key, arr);
   }
 }
 

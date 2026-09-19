@@ -96,3 +96,10 @@ body {
 .chip-cat-100 {
   color: var(--cat, var(--cat-on-campus));
 }
+
+/* Wrapper-level reduced-motion gate for the vendored FuseButton:
+   keep the undo window + instant states, hide the burning fuse decoration. */
+.fuse-quiet [data-phase='armed'] > svg,
+.fuse-quiet [data-phase='armed'] > i {
+  display: none;
+}

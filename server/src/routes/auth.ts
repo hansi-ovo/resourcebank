@@ -11,7 +11,9 @@ export function authRoutes(deps: AuthDeps): Router {
 
   router.post('/api/login', (req, res) => {
     const ip = req.ip ?? 'unknown';
-    if (!limiter.check(ip, Date.now())) {
+    // Failed-attempt limiter (5/min/IP): successes don't burn the budget —
+    // an admin signing in repeatedly must not lock themselves out.
+    if (!limiter.check(ip, Date.now(), false)) {
       res.status(429).json({ error: 'Too many attempts. Try again in a minute.' });
       return;
     }
@@ -21,6 +23,7 @@ export function authRoutes(deps: AuthDeps): Router {
       return;
     }
     if (parsed.data.password !== deps.adminPassword) {
+      limiter.count(ip, Date.now()); // only failures consume the budget
       res.status(401).json({ error: 'Wrong password. Try again.' });
       return;
     }

@@ -44,8 +44,12 @@ describe('auth (01-architecture §6)', () => {
     expect((await request(app).get('/api/published')).status).toBe(200);
   });
 
-  it('rate limit: 5 login attempts per minute per IP then 429', async () => {
+  it('rate limit: 5 failed logins per minute per IP then 429 (successes do not burn budget)', async () => {
     const { app } = makeApp({ seed: true });
+    // a few successful logins first — these must not consume the failure budget
+    for (let i = 0; i < 3; i++) {
+      await login(app);
+    }
     for (let i = 0; i < 5; i++) {
       const res = await request(app).post('/api/login').send({ password: 'nope' });
       expect(res.status).toBe(401);
