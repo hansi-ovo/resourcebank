@@ -70,16 +70,22 @@
 }
 
 .opportunity-card {
-  border-radius: 20px;
   border: 1px solid var(--mist);
+  border-radius: 20px;
   background: var(--surface);
-  padding-bottom: 18px;
+  padding: 0 0 18px;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  text-align: left;
+  font-family: var(--font-body);
+  scroll-margin-top: 96px;
+  cursor: pointer;
   transition:
     transform 200ms cubic-bezier(0.23, 1, 0.32, 1),
     box-shadow 200ms ease,
     border-color 200ms ease;
-  scroll-margin-top: 96px;
 }
 
 .opportunity-card:hover {
@@ -132,16 +138,30 @@
   color: var(--ink-soft);
 }
 
-/* TOC rail (full interaction in Phase 4) */
+/* TOC rail — collapsed ticks, expand on hover/focus zone */
 .section-toc {
   position: fixed;
   right: 20px;
   top: 50%;
   transform: translateY(-50%);
+  z-index: 30;
+}
+
+.toc-list {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   gap: 10px;
-  z-index: 30;
+}
+
+.toc-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 0;
+  background: transparent;
+  padding: 2px 0;
+  cursor: pointer;
 }
 
 .toc-tick {
@@ -153,8 +173,55 @@
   transition: width 200ms ease;
 }
 
+.toc-label {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--cat);
+  opacity: 0;
+  transform: translateX(6px);
+  transition:
+    opacity 200ms ease,
+    transform 200ms ease;
+  white-space: nowrap;
+}
+
+.section-toc.is-open .toc-label,
+.section-toc:focus-within .toc-label {
+  opacity: 1;
+  transform: none;
+}
+
+.toc-item.is-active .toc-tick {
+  width: 40px;
+}
+
+.content-empty-link {
+  color: var(--brand-blue);
+  font-weight: 600;
+}
+
+/* quiet fade-swap on SSE-driven section updates */
+.content-section {
+  transition: opacity 150ms ease;
+}
+
+.content-section.is-fading {
+  opacity: 0.35;
+}
+
+@media (max-width: 959px) {
+  .section-toc {
+    display: none;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .content-rule {
     transform: none;
+  }
+  .content-section,
+  .toc-label,
+  .toc-tick {
+    transition: none;
   }
 }

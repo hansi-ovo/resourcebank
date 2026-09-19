@@ -11,7 +11,8 @@
   "devDependencies": {
     "@playwright/test": "^1.63.0",
     "@types/node": "^24.13.6",
-    "concurrently": "^10.0.5"
+    "concurrently": "^10.0.5",
+    "lighthouse": "^13.5.0"
   },
   "scripts": {
     "dev": "concurrently -n server,client -c green,blue \"npm run dev -w server\" \"npm run dev -w client\"",
