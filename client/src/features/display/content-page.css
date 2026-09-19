@@ -1,0 +1,160 @@
+/* Display content page — grid + section rules + TOC rail. */
+
+.content-root {
+  min-height: 100vh;
+  background: var(--canvas);
+}
+
+.content-header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: color-mix(in oklab, var(--canvas) 92%, transparent);
+  backdrop-filter: blur(8px);
+  padding: 18px 32px;
+}
+
+.content-main {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 64px 32px 128px;
+  display: flex;
+  flex-direction: column;
+  gap: 96px;
+}
+
+.content-title {
+  font-family: var(--font-display);
+  font-size: var(--fs-section);
+  font-weight: 620;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  margin: 0 0 12px;
+}
+
+.content-rule {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--cat);
+  margin-bottom: 28px;
+  transform-origin: left center;
+}
+
+.content-empty {
+  color: var(--ink-soft);
+  max-width: 60ch;
+}
+
+.content-loading {
+  color: var(--ink-soft);
+  padding: 8vh 0;
+}
+
+/* card grid: 3 → 2 (<1024) → 1 (<640) */
+.content-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+}
+
+@media (max-width: 1023px) {
+  .content-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 639px) {
+  .content-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.opportunity-card {
+  border-radius: 20px;
+  border: 1px solid var(--mist);
+  background: var(--surface);
+  padding-bottom: 18px;
+  overflow: hidden;
+  transition:
+    transform 200ms cubic-bezier(0.23, 1, 0.32, 1),
+    box-shadow 200ms ease,
+    border-color 200ms ease;
+  scroll-margin-top: 96px;
+}
+
+.opportunity-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 12px 32px rgba(26, 43, 42, 0.08);
+  border-color: color-mix(in oklab, var(--cat) 45%, white);
+}
+
+.card-image {
+  aspect-ratio: 16 / 9;
+  background: color-mix(in oklab, var(--cat) 12%, white);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.card-image img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.card-fallback {
+  font-family: var(--font-display);
+  font-weight: 200;
+  font-size: 120px;
+  color: color-mix(in oklab, var(--cat) 30%, white);
+  line-height: 1;
+}
+
+.card-name {
+  margin: 16px 18px 8px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.card-meta {
+  margin: 0 18px 4px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+.card-domain {
+  display: block;
+  margin: 0 18px;
+  font-size: 13px;
+  color: var(--ink-soft);
+}
+
+/* TOC rail (full interaction in Phase 4) */
+.section-toc {
+  position: fixed;
+  right: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 30;
+}
+
+.toc-tick {
+  display: block;
+  width: 28px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--cat);
+  transition: width 200ms ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .content-rule {
+    transform: none;
+  }
+}

@@ -7,6 +7,8 @@ import { AuthProvider } from '@/lib/auth';
 import { AdminGuard } from '@/features/admin/AdminGuard';
 import { AdminHome } from '@/features/admin/AdminHome';
 import { ReviewLayout } from '@/features/admin/ReviewLayout';
+import { HeroPage } from '@/features/display/HeroPage';
+import { ContentPage } from '@/features/display/ContentPage';
 import { ReviewListTab } from '@/features/admin/ReviewListTab';
 import { CheckUpdatesTab } from '@/features/admin/CheckUpdatesTab';
 import { ContentManagementTab } from '@/features/admin/ContentManagementTab';
@@ -28,10 +30,12 @@ function App() {
     <AuthProvider>
       <ToastProvider>
         <Routes>
-          {/* Display routes land in Phase 3/4 — admin Phase 2 ships first. */}
+          {/* Display */}
+          <Route path="/" element={<HeroPage />} />
+          <Route path="/resources" element={<ContentPage />} />
+          {/* Admin (no display→admin links; admins navigate by URL — D13) */}
           <Route path="/admin/*" element={<AdminApp />} />
-          <Route path="/" element={<Navigate to="/admin" replace />} />
-          <Route path="*" element={<Navigate to="/admin" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </ToastProvider>
     </AuthProvider>
