@@ -27,6 +27,8 @@ export interface FallingWordsProps {
 interface WordBody {
   body: Matter.Body;
   elem: HTMLElement;
+  slot: number; // even target x across the viewport
+  startX: number;
 }
 
 const ROWS = 3;
@@ -66,7 +68,7 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
         const s = document.createElement('span');
         const isChip = Math.random() < 0.45;
         const tint = TINTS[(r * perRow + i) % TINTS.length];
-        const size = 14 + Math.round(Math.random() * 14); // some big, some small (14–28px)
+        const size = 14 + ((r * perRow + i) * 7) % 15; // deterministic spread 14–28px
         s.textContent = w;
         s.style.cssText = [
           'display:inline-block',
@@ -74,7 +76,7 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
           `font-size:${size}px`,
           'font-weight:600',
           'padding:' + (isChip ? '2px 10px' : '2px 2px'),
-          'border-radius:' + (isChip ? '999px' : '0'),
+          'border-radius:0', /* square corners (request 4b) */
           isChip ? `background:color-mix(in srgb, ${tint} 16%, white)` : '',
           isChip ? `color:${tint}` : `color:${tint}`,
           'white-space:nowrap',
@@ -104,36 +106,32 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
     const left = Bodies.rectangle(-40, H() / 2, 80, H() * 3, wallOpts);
     const right = Bodies.rectangle(W() + 40, H() / 2, 80, H() * 3, wallOpts);
 
-    const wordBodies: WordBody[] = spans.map((elem) => {
+    const wordBodies: WordBody[] = spans.map((elem, i) => {
       const rect = elem.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const body = Bodies.rectangle(cx, cy, rect.width, rect.height, {
-        restitution: 0.4,
-        frictionAir: 0.008,
-        friction: 0.25,
-        chamfer: { radius: 8 },
+        restitution: 0.05,
+        frictionAir: 0.01,
+        friction: 0.8,
+        chamfer: { radius: 2 },
         render: { fillStyle: 'transparent' },
       });
-      // messy launch: words fan out across the WHOLE width (request 1b) —
-      // velocity is aimed from the word's spawn x toward a spread target so
-      // the bottom pile spans the full viewport; plus spin. Sizes already
-      // vary per-span (14–28px fonts → proportionally sized bodies).
-      const fanFrom = W() * 0.5; // rows cluster near the center-top
-      const target = (Math.random() * 0.9 + 0.05) * W(); // 5%–95% of width
-      const dx = target - cx;
-      const fallTime = 0.9 + Math.random() * 0.3; // approx seconds to bottom
-      Body.setVelocity(body, {
-        x: dx / (fallTime * 60), // px per physics-step (~60fps)
-        y: 3 + Math.random() * 3,
-      });
-      Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.09);
+      // EVEN distribution (request 4b): each word gets an evenly spaced
+      // target slot across the viewport. Physics owns the vertical fall and
+      // the pile-up height; the horizontal position is steered toward the
+      // slot during the fall (x blend below), so the bottom coverage is
+      // uniform regardless of collisions. Drag still works — the steering
+      // only runs while a word is above the settle line.
+      const slot = ((i + 0.5) / spans.length) * W();
+      Body.setVelocity(body, { x: 0, y: 2 + (i % 3) });
+      Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.04); // gentle tilt
       // rects were read in flow layout; from now on the spans are positioned
       // absolutely and synced to their physics bodies per frame
       elem.style.position = 'absolute';
       elem.style.left = '0px';
       elem.style.top = '0px';
-      return { body, elem };
+      return { body, elem, slot, startX: cx };
     });
 
     const mouse = Mouse.create(host);
@@ -151,10 +149,22 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
     // ── per-frame sync + the 2/3 fade band ──────────────────────────────
     let raf = 0;
     const fadeStart = () => H() * (2 / 3);
+    const settleLine = () => H() * 0.86;
     const loop = () => {
       const fs = fadeStart();
       let lowest = 0;
-      for (const { body, elem } of wordBodies) {
+      for (const { body, elem, slot, startX } of wordBodies) {
+        // horizontal steering toward the even slot while the word is still
+        // falling above the settle line (words already settling keep their
+        // physics positions; dragging is unaffected because the steer pauses
+        // once the word has crossed the line)
+        if (body.position.y < settleLine() && body.position.y > H() * 0.18) {
+          const p = body.position.y / settleLine(); // 0..1 fall progress
+          const eased = p * p * (3 - 2 * p); // smoothstep
+          const wanted = startX + (slot - startX) * Math.min(1, eased);
+          Body.setPosition(body, { x: wanted, y: body.position.y });
+          Body.setVelocity(body, { x: 0, y: body.velocity.y });
+        }
         const { x, y } = body.position;
         elem.style.left = `${x}px`;
         elem.style.top = `${y}px`;

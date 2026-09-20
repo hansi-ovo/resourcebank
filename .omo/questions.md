@@ -106,3 +106,9 @@ Autonomous-mode log per WORKORDER. Each line: decision → default taken → rat
 - **3d 搜索框** → review list 与 content management 各一（按名称过滤 + 计数）；check-updates 为卡片列表未加。
 - **3e 全套 sticky** → 顶栏 top:0 / 搜索框 56 / 表头 124 / 目录 72（滚 900px 实测钉住）；去掉 overflow-x-auto 内滚容器（会废 sticky），改页面级横向滚动（scrollWidth 1747 @1440 可横滚看全表）。
 - **验证** → 28/28 Playwright + 31/31 Vitest；截图 .omo/reviews/revision3/；polish.spec 横滚断言更新。
+## Client revision round 4 (2026-09-20)
+
+- **4a 上移实测与执行** → 开发者工具实测（1440×900）：DKU Logo 底 y=44px，标题文字顶 y=155px，**当前间距 111px**；一半 = 55.5px。执行：hero-main 顶部 padding 精调至 47px（align-content:center 会重分配空间，故弃用负 margin 方案；-56px margin 曾导致 -48px 反向过冲），复测 **gap=55px 整块命中**，CTA 底 687px，一屏无滚动保持。
+- **4b 词效均匀化** → 字块直角（border-radius 0，含彩底）；均匀铺底改为半物理：每词分配均匀槽位 x=((i+0.5)/n)·W，下落过程中 x 平滑插值（smoothstep）至槽位、垂直仍走物理（拖拽照常，越过 86% 沉降线后停止转向）。物理参数收敛化：restitution 0.05、friction 0.8（落定即冻结）。复测 22 词 minX 42 / maxX 1373（1440 视口全宽），相邻间距 min 18 / avg 63 / max 106（原 min 1 / max 96 完全随机→现已均匀有序）。
+- **4c 网格再增 30%** → gridOpacity 0.06→0.08、fillOpacity 0.072→0.10、maxOpacity 0.72→0.94、lineWidth 1→1.2、radius 170→180（更接近 reactbits Cursor Grid 官方观感：全屏网格常显 + 光标附近亮度提升）。
+- **验证** → 28/28 Playwright + 31/31 Vitest；截图 .omo/reviews/revision3/04-hero-round4.png。

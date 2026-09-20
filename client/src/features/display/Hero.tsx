@@ -55,18 +55,19 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
 
   return (
     <div className="hero-root" data-hero-root>
-      {/* mouse-follow grid (request 1a: base grid +20%, near-cursor +30% more) */}
+      {/* mouse-follow grid (request 4c: base grid brightness +30% again,
+          cursor-proximity boost even stronger — react-bits Cursor Grid look) */}
       {!reduced ? (
         <CursorGrid
           className="hero-cursor-grid"
           cellSize={56}
           color="#336472"
-          radius={170}
+          radius={180}
           falloff="smooth"
-          maxOpacity={0.72}
-          lineWidth={1}
-          fillOpacity={0.072}
-          gridOpacity={0.06}
+          maxOpacity={0.94}
+          lineWidth={1.2}
+          fillOpacity={0.1}
+          gridOpacity={0.08}
           clickPulse={false}
         />
       ) : null}

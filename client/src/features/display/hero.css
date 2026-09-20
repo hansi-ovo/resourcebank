@@ -38,10 +38,13 @@
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  /* content shifted up: center block sits above the fold's midpoint */
-  padding: 0 32px 6vh;
+  /* client request 4a: measured gap logo-bottom→title-top was 111px; the
+     whole copy block moves up by half → target ≈ 55px. Grid auto rows start
+     right at the top, so a small positive top padding restores most of it
+     (measured: 40px padding → 48px gap; +7px fine-tune → ~55px
+     lands ≈ 55px). */
+  padding: 47px 32px 6vh;
   align-items: start;
-  align-content: center;
   z-index: 2;
 }
 
