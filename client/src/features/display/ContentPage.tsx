@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { useEventStream } from '@/lib/sse';
 import { useReducedMotion } from '@/lib/motion';
 import { Logo } from '@/components/ui/Logo';
-import { domain, displayImageUrl } from '@/lib/format';
+import { displayImageUrl } from '@/lib/format';
 import { EntryModal } from './EntryModal';
 import { CATEGORIES, type Entry, type PublishedSection } from 'shared/types';
 import { CATEGORY_DESCRIPTIONS } from './categoryDescriptions';
@@ -256,7 +256,6 @@ export function ContentPage() {
                       </span>
                       <span className="card-name">{e.name}</span>
                       <span className="card-meta">{e.audience.slice(0, 3).join(', ')}</span>
-                      <span className="card-domain">{domain(e.url)}</span>
                     </button>
                   ))}
                 </div>

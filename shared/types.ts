@@ -46,6 +46,7 @@ export interface Entry {
   startsAt: string | null; // ISO date
   endsAt: string | null; // ISO date (deadline)
   timeline: string; // free-text application timeline (client sheet format, e.g. "Session 3 Week 6 - Session 4 Week 1")
+  notes: string; // admin-only notes (client revision 3)
   category: CategoryId;
   imageUrl: string | null;
   quality: number | null; // mock AI confidence 1–100
@@ -128,4 +129,7 @@ export interface EntryPatch {
   audience?: string[];
   category?: CategoryId;
   timeline?: string;
+  notes?: string;
+  /** image URL; empty string clears it (null in the DB) */
+  imageUrl?: string;
 }

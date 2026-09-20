@@ -32,10 +32,12 @@
   margin: 0 0 8px;
 }
 
-/* category description under each section title (request 2.4) */
+/* category description under each section title (request 2a): paragraph
+   width equals the rule width — both span the full column, aligned */
 .content-section-desc {
   margin: 0 0 14px;
-  max-width: 78ch;
+  width: 100%;
+  max-width: none;
   font-size: 14px;
   line-height: 1.65;
   color: var(--ink-soft);
@@ -47,6 +49,7 @@
   background: var(--cat);
   margin-bottom: 28px;
   transform-origin: left center;
+  width: 100%;
 }
 
 .content-empty {

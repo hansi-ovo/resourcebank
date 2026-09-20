@@ -24,9 +24,10 @@
   z-index: 2;
 }
 
-/* compact header so everything fits without scrolling (request 1.1) */
+/* compact header so everything fits without scrolling; logo sits closer to
+   the title (request 1c: gap halved) */
 .hero-header {
-  padding: 12px 32px 0;
+  padding: 8px 32px 0;
 }
 
 .hero-main {
@@ -37,9 +38,10 @@
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  /* tight paddings: logo → title gap minimized (request 1.1) */
-  padding: 0 32px 2vh;
-  align-items: center;
+  /* content shifted up: center block sits above the fold's midpoint */
+  padding: 0 32px 6vh;
+  align-items: start;
+  align-content: center;
   z-index: 2;
 }
 

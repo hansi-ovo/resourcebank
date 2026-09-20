@@ -91,3 +91,18 @@ Autonomous-mode log per WORKORDER. Each line: decision → default taken → rat
 - **4d — Content replaced** → scraped the client's yuque Sheet (public singleDoc; lakesheet body was zlib-deflated — decompressed and extracted via script, evidence kept at `.omo/yuque-doc-full.json` + `.omo/yuque-sheet.json`): 25 programs (on-campus 5 / fellowships 12 / experiential 3 / events 3 / training 2) with the sheet's summaries, eligibility (→ audience chips), and timelines. New `timeline` field added through the whole stack (types, schema + ALTER migration, routes, modal, admin tables — the sheet gives free-text application windows like "Session 3 Week 6 - Session 4 Week 1", not ISO dates; ISO startsAt/endsAt stay null). Rows without a sheet web link got unique placeholder URLs under `/leadership/…` (URL is the global dedupe key; plain `/` dupes broke the UNIQUE constraint — client should supply real links: Orientation Leader, Campus Activities Board). Introduction sheet's extra rows (R4-R8: Browse This Resource Bank / A Note… / Resource Adjustment / Bookings with Rex) are hero/modal-adjacent copy not yet surfaced on the site — available on request.
 - **5 — Global ClickSpark + scrollbar** → vendored react-bits ClickSpark (SHA prefix 439D10B7298270EB…) wrapping the whole app (spark color = on-campus green); page scrollbars hidden globally (webkit + firefox + ms rules; scrolling still works).
 - **Test suite** → hardened several waits to poll-based equivalents (dev-server latency under full-suite load was making instant checks flaky; no app bugs found in the process). Final state: 28/28 Playwright + 31/31 Vitest green; display initial JS 156KB gz ≤ 180 budget (FallingText/matter-js in its own lazy chunk).
+
+## Client revision round 3 (2026-09-20)
+
+- **1a 网格透明度** → gridOpacity 0.06、fillOpacity 0.072、maxOpacity 0.72（基础 +20%、光标附近再 +30%）。
+- **1b 掉落词 v3** → 字号随机 14–28px；主题 ramp 5 档色（绿→蓝）轮转 + 45% 彩底；三排顶部 space-between；初速按落点目标定向（target 5%–95% 视口宽），实测稳定分布 min 301 / med 835 / max 1394（1440 视口，铺满全宽）；堆底透明度 0.45（再降 10%）。
+- **1c 首页上移** → header 8px、hero-main align-items:start、底 6vh；实测 logo 底到标题顶 111px。
+- **1.5 顺序链修正** → 标题 BlurText 由 wordsDropped 门控（此前词落前就挂载）。
+- **2a 描述对齐** → desc 与规则条均 100% 列宽（实测 1136=1136）。
+- **2b 卡片去网址** → 移除 card-domain（弹窗仍有 Visit website）。
+- **3a 折叠按钮** → 顶栏 ‹/› 切换 nav w-56→0；状态会话级。
+- **3b 主题蓝直角** → active 标签 var(--brand-blue) #003399、radius 0（原 var(--ink) 被读作棕色）。
+- **3c 表格重构** → Program | Category | Dates | Website | Audience | Summary | Notes | Image URL | Actions；Notes/Image URL 新增可编辑列（imageUrl 空串清除、允许相对路径，服务端校验放宽）；Dates 换行不截断；Summary 完整显示；DB entries 加 notes 列（schema + ALTER 迁移 + PUT patch）。
+- **3d 搜索框** → review list 与 content management 各一（按名称过滤 + 计数）；check-updates 为卡片列表未加。
+- **3e 全套 sticky** → 顶栏 top:0 / 搜索框 56 / 表头 124 / 目录 72（滚 900px 实测钉住）；去掉 overflow-x-auto 内滚容器（会废 sticky），改页面级横向滚动（scrollWidth 1747 @1440 可横滚看全表）。
+- **验证** → 28/28 Playwright + 31/31 Vitest；截图 .omo/reviews/revision3/；polish.spec 横滚断言更新。

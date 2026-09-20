@@ -27,11 +27,9 @@ export interface FallingWordsProps {
 interface WordBody {
   body: Matter.Body;
   elem: HTMLElement;
-  baseScale: number;
 }
 
 const ROWS = 3;
-const WORD_FONT = 15;
 
 export function FallingWords({ words, className, onDropped }: FallingWordsProps) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -54,28 +52,31 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
     stage.style.cssText = 'position:absolute;inset:0;overflow:hidden;';
     host.appendChild(stage);
 
+    // mixed sizes and green/blue tints (request 1b): rotate between the
+    // theme's green and blue ramp steps per word
+    const TINTS = ['#3E7A5C', '#33605B', '#336472', '#3F5F85', '#465891'];
     const spans: HTMLSpanElement[] = [];
-    const chipFlag: boolean[] = [];
     const perRow = Math.ceil(words.length / ROWS);
     for (let r = 0; r < ROWS; r++) {
       const rowWords = words.slice(r * perRow, (r + 1) * perRow);
       const rowEl = document.createElement('div');
       rowEl.style.cssText =
-        'position:absolute;top:' + (4 + r * 30) + 'px;left:0;right:0;display:flex;justify-content:center;gap:14px;flex-wrap:nowrap;white-space:nowrap;';
-      rowWords.forEach((w) => {
+        'position:absolute;top:' + (4 + r * 34) + 'px;left:0;right:0;display:flex;justify-content:space-between;padding:0 32px;flex-wrap:nowrap;white-space:nowrap;';
+      rowWords.forEach((w, i) => {
         const s = document.createElement('span');
-        const isChip = Math.random() < 0.45; // some words get a colored background
-        chipFlag.push(isChip);
+        const isChip = Math.random() < 0.45;
+        const tint = TINTS[(r * perRow + i) % TINTS.length];
+        const size = 14 + Math.round(Math.random() * 14); // some big, some small (14–28px)
         s.textContent = w;
         s.style.cssText = [
           'display:inline-block',
-          `font-family:var(--font-body)`,
-          `font-size:${WORD_FONT}px`,
+          'font-family:var(--font-body)',
+          `font-size:${size}px`,
           'font-weight:600',
-          'padding:' + (isChip ? '3px 10px' : '3px 2px'),
+          'padding:' + (isChip ? '2px 10px' : '2px 2px'),
           'border-radius:' + (isChip ? '999px' : '0'),
-          isChip ? 'background:color-mix(in srgb, var(--cat) 16%, white)' : '',
-          isChip ? 'color:var(--cat)' : 'color:var(--ink-soft)',
+          isChip ? `background:color-mix(in srgb, ${tint} 16%, white)` : '',
+          isChip ? `color:${tint}` : `color:${tint}`,
           'white-space:nowrap',
           'user-select:none',
         ]
@@ -103,28 +104,36 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
     const left = Bodies.rectangle(-40, H() / 2, 80, H() * 3, wallOpts);
     const right = Bodies.rectangle(W() + 40, H() / 2, 80, H() * 3, wallOpts);
 
-    const wordBodies: WordBody[] = spans.map((elem, i) => {
+    const wordBodies: WordBody[] = spans.map((elem) => {
       const rect = elem.getBoundingClientRect();
       const cx = rect.left + rect.width / 2;
       const cy = rect.top + rect.height / 2;
       const body = Bodies.rectangle(cx, cy, rect.width, rect.height, {
-        restitution: 0.35,
-        frictionAir: 0.012,
-        friction: 0.4,
+        restitution: 0.4,
+        frictionAir: 0.008,
+        friction: 0.25,
         chamfer: { radius: 8 },
         render: { fillStyle: 'transparent' },
       });
-      // messy launch: random horizontal shove + random scale up/down + spin
-      Body.setVelocity(body, { x: (Math.random() - 0.5) * 9, y: 2 + Math.random() * 4 });
+      // messy launch: words fan out across the WHOLE width (request 1b) —
+      // velocity is aimed from the word's spawn x toward a spread target so
+      // the bottom pile spans the full viewport; plus spin. Sizes already
+      // vary per-span (14–28px fonts → proportionally sized bodies).
+      const fanFrom = W() * 0.5; // rows cluster near the center-top
+      const target = (Math.random() * 0.9 + 0.05) * W(); // 5%–95% of width
+      const dx = target - cx;
+      const fallTime = 0.9 + Math.random() * 0.3; // approx seconds to bottom
+      Body.setVelocity(body, {
+        x: dx / (fallTime * 60), // px per physics-step (~60fps)
+        y: 3 + Math.random() * 3,
+      });
       Body.setAngularVelocity(body, (Math.random() - 0.5) * 0.09);
-      const baseScale = 0.8 + Math.random() * 0.6; // some bigger, some smaller
-      Body.scale(body, baseScale, baseScale);
       // rects were read in flow layout; from now on the spans are positioned
       // absolutely and synced to their physics bodies per frame
       elem.style.position = 'absolute';
       elem.style.left = '0px';
       elem.style.top = '0px';
-      return { body, elem, baseScale };
+      return { body, elem };
     });
 
     const mouse = Mouse.create(host);
@@ -150,8 +159,8 @@ export function FallingWords({ words, className, onDropped }: FallingWordsProps)
         elem.style.left = `${x}px`;
         elem.style.top = `${y}px`;
         elem.style.transform = `translate(-50%, -50%) rotate(${body.angle}rad)`;
-        // fade in only below the 2/3 band: 1 → 0.5
-        const fade = y > fs ? Math.max(0.5, 1 - ((y - fs) / (H() * 0.35)) * 0.5) : 1;
+        // fade in only below the 2/3 band: 1 → 0.45 (request 1b: −10%)
+        const fade = y > fs ? Math.max(0.45, 1 - ((y - fs) / (H() * 0.35)) * 0.55) : 1;
         elem.style.opacity = String(fade);
         if (y > lowest) lowest = y;
       }

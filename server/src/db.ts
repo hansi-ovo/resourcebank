@@ -15,6 +15,7 @@ export type Row = {
   starts_at: string | null;
   ends_at: string | null;
   timeline?: string | null;
+  notes?: string | null;
   category: (typeof CATEGORY_IDS)[number];
   image_url: string | null;
   quality: number | null;
@@ -36,6 +37,7 @@ export function toEntry(r: Row): Entry {
     startsAt: r.starts_at,
     endsAt: r.ends_at,
     timeline: r.timeline ?? '',
+    notes: r.notes ?? '',
     category: r.category,
     imageUrl: r.image_url,
     quality: r.quality,
@@ -51,10 +53,13 @@ export function openDb(file: string): Database.Database {
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
   db.exec(readFileSync(path.resolve(__dirname, 'schema.sql'), 'utf-8'));
-  // lightweight migration: entries.timeline added after first release
+  // lightweight migrations: columns added after first release
   const cols = db.prepare('PRAGMA table_info(entries)').all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === 'timeline')) {
     db.exec("ALTER TABLE entries ADD COLUMN timeline TEXT NOT NULL DEFAULT ''");
+  }
+  if (!cols.some((c) => c.name === 'notes')) {
+    db.exec("ALTER TABLE entries ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   }
   return db;
 }

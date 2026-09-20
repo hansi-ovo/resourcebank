@@ -55,7 +55,7 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
 
   return (
     <div className="hero-root" data-hero-root>
-      {/* mouse-follow grid (request 1.2) */}
+      {/* mouse-follow grid (request 1a: base grid +20%, near-cursor +30% more) */}
       {!reduced ? (
         <CursorGrid
           className="hero-cursor-grid"
@@ -63,10 +63,10 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
           color="#336472"
           radius={170}
           falloff="smooth"
-          maxOpacity={0.55}
+          maxOpacity={0.72}
           lineWidth={1}
-          fillOpacity={0.06}
-          gridOpacity={0.05}
+          fillOpacity={0.072}
+          gridOpacity={0.06}
           clickPulse={false}
         />
       ) : null}
@@ -82,18 +82,23 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
               <span className="hero-title-static">DKU Leadership Resource Bank</span>
             ) : (
               <>
-                <span
-                  className="hero-title-blur-stage"
-                  style={{ visibility: titleSettled ? 'hidden' : 'visible' }}
-                >
-                  <BlurText
-                    text="DKU Leadership Resource Bank"
-                    delay={80}
-                    stepDuration={0.35}
-                    className="hero-title-blur"
-                    onAnimationComplete={() => setTitleSettled(true)}
-                  />
-                </span>
+                {/* title waits until the falling words pass the 2/3 mark
+                    (request 1.5: words drop first, then title → subtitle →
+                    description → CTA) */}
+                {wordsDropped ? (
+                  <span
+                    className="hero-title-blur-stage"
+                    style={{ visibility: titleSettled ? 'hidden' : 'visible' }}
+                  >
+                    <BlurText
+                      text="DKU Leadership Resource Bank"
+                      delay={80}
+                      stepDuration={0.35}
+                      className="hero-title-blur"
+                      onAnimationComplete={() => setTitleSettled(true)}
+                    />
+                  </span>
+                ) : null}
                 <span
                   className="hero-title-vp-stage"
                   style={{ display: titleSettled ? 'block' : 'none' }}

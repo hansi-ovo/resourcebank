@@ -3,7 +3,7 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router';
 import { api } from '@/lib/api';
 import { useEventStream } from '@/lib/sse';
 import { Logo } from '@/components/ui/Logo';
-import { ChevronLeftIcon, ExternalIcon } from './icons';
+import { ChevronLeftIcon, ChevronRightIcon, ExternalIcon } from './icons';
 import { ReviewListTab } from './ReviewListTab';
 import { CheckUpdatesTab } from './CheckUpdatesTab';
 import { ContentManagementTab } from './ContentManagementTab';
@@ -35,25 +35,43 @@ export function useAdminSummary() {
   return { summary, refresh };
 }
 
-/** `/admin/review/:tab` shell: top bar + left nav + tab content (03-pages). */
+/** `/admin/review/:tab` shell: sticky top bar + collapsible left nav + tabs. */
 export function ReviewLayout() {
   const { tab } = useParams();
   const navigate = useNavigate();
   const { summary } = useAdminSummary();
+  // sidebar collapse (request 3a) — collapsed survives tab switches, resets on reload
+  const [navCollapsed, setNavCollapsed] = useState(false);
 
   const active = REVIEW_TABS.find((t) => t.id === tab);
   if (!active) return <Navigate to="/admin/review/review-list" replace />;
 
   return (
     <div className="min-h-screen bg-canvas">
-      <header className="relative flex h-14 items-center justify-between border-b border-mist bg-surface px-6">
-        <div className="flex items-center gap-4">
+      {/* sticky top bar (request 3e) */}
+      <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-mist bg-surface px-4">
+        <div className="flex items-center gap-2">
+          {/* collapse toggle (request 3a) */}
+          <button
+            type="button"
+            onClick={() => setNavCollapsed((c) => !c)}
+            aria-label={navCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={!navCollapsed}
+            className="flex h-8 w-8 items-center justify-center rounded-md border border-mist bg-surface text-ink-soft transition-colors hover:border-ink-soft/40 hover:text-ink focus-visible:outline-2"
+            style={{ outlineColor: 'var(--focus)' }}
+          >
+            {navCollapsed ? (
+              <ChevronRightIcon className="h-4 w-4" aria-hidden />
+            ) : (
+              <ChevronLeftIcon className="h-4 w-4" aria-hidden />
+            )}
+          </button>
           <Link
             to="/admin"
             className="inline-flex items-center gap-1 rounded-md px-1 text-[14px] font-semibold text-ink hover:text-ink-soft focus-visible:outline-2"
             style={{ outlineColor: 'var(--focus)' }}
           >
-            <ChevronLeftIcon className="h-4 w-4" aria-hidden />
+            <ChevronLeftIcon className="-ml-1 h-4 w-4" aria-hidden />
             Admin home
           </Link>
         </div>
@@ -70,9 +88,20 @@ export function ReviewLayout() {
         </button>
       </header>
 
-      <div className="mx-auto flex w-full max-w-[1400px] gap-8 px-6 py-8">
-        <nav aria-label="Review sections" className="w-56 shrink-0">
-          <ul className="sticky top-8 space-y-1">
+      <div
+        className={cn(
+          'mx-auto flex w-full max-w-none items-start px-4 py-6',
+          navCollapsed ? 'gap-0' : 'gap-6',
+        )}
+      >
+        <nav
+          aria-label="Review sections"
+          className={cn(
+            'sticky top-[72px] shrink-0 overflow-hidden transition-all duration-200',
+            navCollapsed ? 'w-0 opacity-0' : 'w-56 opacity-100',
+          )}
+        >
+          <ul className="space-y-1">
             {REVIEW_TABS.map((t) => {
               const isActive = t.id === active.id;
               const count = t.count && summary ? summary[t.count] : null;
@@ -82,22 +111,27 @@ export function ReviewLayout() {
                     to={`/admin/review/${t.id}`}
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
-                      'flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-[14px] font-semibold transition-colors focus-visible:outline-2',
+                      'flex w-full items-center justify-between px-3 py-2.5 text-[14px] font-semibold transition-colors focus-visible:outline-2',
                       isActive ? 'text-white' : 'text-ink hover:bg-surface',
                     )}
                     style={{
-                      background: isActive ? 'var(--ink)' : undefined,
+                      /* active = brand blue, square corners (request 3b) */
+                      background: isActive ? 'var(--brand-blue)' : undefined,
+                      borderRadius: 0,
                       outlineColor: 'var(--focus)',
                     }}
                   >
-                    <span>{t.label}</span>
+                    <span className="whitespace-nowrap">{t.label}</span>
                     {count !== null && count > 0 ? (
                       <span
                         className="num inline-flex min-w-6 items-center justify-center rounded-full px-1.5 text-[12px] font-bold"
                         style={
                           isActive
-                            ? { background: 'rgba(255,255,255,0.2)', color: 'white' }
-                            : { background: 'color-mix(in oklab, var(--cat-on-campus) 12%, white)', color: 'var(--cat-on-campus)' }
+                            ? { background: 'rgba(255,255,255,0.22)', color: 'white' }
+                            : {
+                                background: 'color-mix(in oklab, var(--cat-on-campus) 12%, white)',
+                                color: 'var(--cat-on-campus)',
+                              }
                         }
                       >
                         {count}
@@ -110,7 +144,7 @@ export function ReviewLayout() {
           </ul>
         </nav>
 
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-shrink">
           {active.id === 'review-list' ? <ReviewListTab /> : null}
           {active.id === 'check-updates' ? <CheckUpdatesTab /> : null}
           {active.id === 'content-management' ? <ContentManagementTab /> : null}

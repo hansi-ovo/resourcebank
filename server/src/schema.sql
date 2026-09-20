@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS entries (
   starts_at    TEXT,                     -- ISO date, nullable
   ends_at      TEXT,                     -- ISO date, nullable (deadline)
   timeline     TEXT NOT NULL DEFAULT '', -- free-text application timeline
+  notes        TEXT NOT NULL DEFAULT '', -- admin-only notes
   category     TEXT NOT NULL CHECK (category IN ('on-campus','fellowships','experiential','events','training')),
   image_url    TEXT,
   quality      INTEGER,

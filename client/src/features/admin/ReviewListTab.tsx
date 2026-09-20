@@ -17,17 +17,21 @@ function useHiddenIds(): Set<number> {
   );
 }
 
+type EditableField = 'name' | 'summary' | 'url' | 'audience' | 'notes' | 'imageUrl';
+
 /**
- * Review list tab (03-pages §Admin review). Undo semantics (client-level):
- * press optimistically hides the row; the server mutation only fires when the
- * 7s fuse window expires. Undo = cancel = nothing ever happened.
+ * Review list tab — client revision 3 layout: every project row shows its
+ * COMPLETE information (full summary, wrapped dates, visible Category column,
+ * new Notes + Image URL inline-editable columns); sticky search box + sticky
+ * table header; name search (request 3c/3d/3e).
  */
 export function ReviewListTab() {
   const toast = useToast();
   const { refresh } = useAdminSummary();
   const [rows, setRows] = useState<Entry[] | null>(null);
   const [selected, setSelected] = useState<Set<number>>(new Set());
-  const [editing, setEditing] = useState<{ id: number; field: 'name' | 'summary' | 'url' | 'audience' } | null>(null);
+  const [editing, setEditing] = useState<{ id: number; field: EditableField } | null>(null);
+  const [query, setQuery] = useState('');
   const hidden = useHiddenIds();
 
   const load = useCallback(async () => {
@@ -42,7 +46,6 @@ export function ReviewListTab() {
     void load();
   }, [load]);
 
-  // when a queued action finally fires, refetch + refresh badges
   useEffect(
     () =>
       onQueueChange(() => {
@@ -80,21 +83,48 @@ export function ReviewListTab() {
     }
   }
 
-  const visible = rows === null ? null : rows.filter((r) => !hidden.has(r.id));
+  const searched =
+    rows === null
+      ? null
+      : query.trim()
+        ? rows.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()))
+        : rows;
+  const visible = searched === null ? null : searched.filter((r) => !hidden.has(r.id));
   const allChecked = visible !== null && visible.length > 0 && selected.size === visible.length;
 
   return (
     <section aria-label="Review list">
+      {/* sticky toolbar: search box (request 3d) directly under the top bar */}
+      <div
+        className="sticky top-[56px] z-20 -mx-1 mb-3 bg-canvas px-1 pb-2 pt-3"
+        style={{ top: 56 }}
+      >
+        <div className="flex items-center gap-3">
+          <input
+            type="search"
+            aria-label="Search programs"
+            placeholder="Search programs by name"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-80 rounded-lg border border-mist bg-surface px-3 py-2 text-[14px] text-ink placeholder:text-ink-soft/60 focus-visible:outline-2"
+            style={{ outlineColor: 'var(--focus)' }}
+          />
+          {visible !== null ? (
+            <span className="num text-[13px] text-ink-soft">{visible.length} items</span>
+          ) : null}
+        </div>
+      </div>
+
       {visible === null ? (
         <p className="text-[14px] text-ink-soft" aria-live="polite">…</p>
       ) : visible.length === 0 ? (
         <p className="max-w-[60ch] text-[16px] text-ink-soft">
-          Nothing to review. Run a search to find new programs. {/* ⚑ copy */}
+          {query.trim() ? 'No programs match your search.' : 'Nothing to review. Run a search to find new programs.' /* ⚑ copy */}
         </p>
       ) : (
         <>
           {selected.size > 0 ? (
-            <div className="mb-4 flex items-center gap-3 rounded-xl border border-mist bg-surface px-4 py-3">
+            <div className="mb-3 flex items-center gap-3 rounded-xl border border-mist bg-surface px-4 py-3">
               <span className="num text-[14px] font-semibold text-ink">{selected.size} selected</span>
               <FuseAction
                 label="Approve selected"
@@ -113,11 +143,15 @@ export function ReviewListTab() {
             </div>
           ) : null}
 
-          <div className="overflow-x-auto rounded-xl border border-mist bg-surface">
-            <table className="w-full min-w-[1080px] border-collapse text-left">
+          <div className="rounded-xl border border-mist bg-surface">
+            <table className="w-full min-w-[1460px] border-collapse text-left">
               <thead>
-                <tr className="border-b border-mist text-[13px] font-semibold text-ink-soft">
-                  <th scope="col" className="sticky-col w-10 px-3 py-3">
+                <tr className="text-[13px] font-semibold text-ink-soft">
+                  <th
+                    scope="col"
+                    className="sticky z-10 w-10 border-b border-mist bg-surface px-3 py-3"
+                    style={{ top: 124 }}
+                  >
                     <input
                       type="checkbox"
                       aria-label="Select all"
@@ -128,13 +162,26 @@ export function ReviewListTab() {
                       className="h-4 w-4 accent-[color:var(--focus)]"
                     />
                   </th>
-                  <th scope="col" className="px-3 py-3">Program</th>
-                  <th scope="col" className="px-3 py-3">Summary</th>
-                  <th scope="col" className="px-3 py-3">Website</th>
-                  <th scope="col" className="px-3 py-3">Audience</th>
-                  <th scope="col" className="px-3 py-3">Dates</th>
-                  <th scope="col" className="px-3 py-3">Category</th>
-                  <th scope="col" className="px-3 py-3">Actions</th>
+                  {[
+                    'Program',
+                    'Category',
+                    'Dates',
+                    'Website',
+                    'Audience',
+                    'Summary',
+                    'Notes',
+                    'Image URL',
+                    'Actions',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className="sticky z-10 border-b border-mist bg-surface px-3 py-3"
+                      style={{ top: 124 }}
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-mist">
@@ -156,7 +203,7 @@ export function ReviewListTab() {
                     </td>
 
                     {editing?.id === e.id && editing.field === 'name' ? (
-                      <td className="p-2">
+                      <td className="min-w-[170px] p-2">
                         <InlineInput
                           initial={e.name}
                           ariaLabel="Edit program name"
@@ -168,8 +215,70 @@ export function ReviewListTab() {
                         />
                       </td>
                     ) : (
-                      <EditableCell label="program name" onEdit={() => setEditing({ id: e.id, field: 'name' })}>
-                        <span className="block text-[14px] font-semibold text-ink">{e.name}</span>
+                      <EditableCell label="program name" className="min-w-[170px]" onEdit={() => setEditing({ id: e.id, field: 'name' })}>
+                        <span className="block break-words text-[14px] font-semibold text-ink">{e.name}</span>
+                      </EditableCell>
+                    )}
+
+                    <td className="min-w-[120px] px-3 py-2">
+                      <div className="mt-1">
+                        <CategoryPicker
+                          value={e.category}
+                          onChange={(c: CategoryId) => void patch(e.id, { category: c })}
+                        />
+                      </div>
+                    </td>
+
+                    <td className="min-w-[130px] px-3 py-2">
+                      <span className="num block whitespace-normal text-[13px] text-ink-soft">
+                        {formatDateRange(e.startsAt, e.endsAt) || (e.timeline ?? '').replace(/\n/g, ' ') || '\u00A0'}
+                      </span>
+                    </td>
+
+                    {editing?.id === e.id && editing.field === 'url' ? (
+                      <td className="min-w-[120px] p-2">
+                        <InlineInput
+                          initial={e.url}
+                          ariaLabel="Edit website"
+                          onSave={(v) => {
+                            setEditing(null);
+                            if (v && v !== e.url) void patch(e.id, { url: v });
+                          }}
+                          onCancel={() => setEditing(null)}
+                        />
+                      </td>
+                    ) : (
+                      <EditableCell label="website" className="min-w-[120px]" onEdit={() => setEditing({ id: e.id, field: 'url' })}>
+                        <span className="block break-all text-[13px] text-ink-soft" title={e.url}>
+                          {domain(e.url)}
+                        </span>
+                      </EditableCell>
+                    )}
+
+                    {editing?.id === e.id && editing.field === 'audience' ? (
+                      <td className="min-w-[140px] p-2">
+                        <TagInput
+                          initial={e.audience}
+                          onSave={(v) => {
+                            setEditing(null);
+                            void patch(e.id, { audience: v });
+                          }}
+                          onCancel={() => setEditing(null)}
+                        />
+                      </td>
+                    ) : (
+                      <EditableCell label="audience" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'audience' })}>
+                        <span className="flex flex-wrap gap-1">
+                          {e.audience.map((t) => (
+                            <span
+                              key={t}
+                              className="inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-semibold"
+                              style={{ background: 'color-mix(in oklab, var(--ink) 7%, white)', color: 'var(--ink-soft)' }}
+                            >
+                              {t}
+                            </span>
+                          ))}
+                        </span>
                       </EditableCell>
                     )}
 
@@ -188,73 +297,52 @@ export function ReviewListTab() {
                       </td>
                     ) : (
                       <EditableCell label="summary" onEdit={() => setEditing({ id: e.id, field: 'summary' })}>
-                        <span className="line-clamp-3 block max-w-[38ch] text-[13px] text-ink-soft">{e.summary}</span>
+                        <span className="block max-w-[46ch] text-[13px] leading-snug text-ink-soft">{e.summary}</span>
                       </EditableCell>
                     )}
 
-                    {editing?.id === e.id && editing.field === 'url' ? (
-                      <td className="p-2">
+                    {editing?.id === e.id && editing.field === 'notes' ? (
+                      <td className="min-w-[140px] p-2">
                         <InlineInput
-                          initial={e.url}
-                          ariaLabel="Edit website"
+                          initial={e.notes}
+                          multiline
+                          ariaLabel="Edit notes"
                           onSave={(v) => {
                             setEditing(null);
-                            if (v && v !== e.url) void patch(e.id, { url: v });
+                            void patch(e.id, { notes: v });
                           }}
                           onCancel={() => setEditing(null)}
                         />
                       </td>
                     ) : (
-                      <EditableCell label="website" onEdit={() => setEditing({ id: e.id, field: 'url' })}>
-                        <span className="block max-w-[24ch] truncate text-[13px] text-ink-soft" title={e.url}>
-                          {domain(e.url)}
+                      <EditableCell label="notes" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'notes' })}>
+                        <span className="block max-w-[30ch] whitespace-pre-wrap text-[13px] leading-snug text-ink-soft">
+                          {e.notes || <span className="opacity-50">—</span>}
                         </span>
                       </EditableCell>
                     )}
 
-                    {editing?.id === e.id && editing.field === 'audience' ? (
-                      <td className="p-2">
-                        <TagInput
-                          initial={e.audience}
+                    {editing?.id === e.id && editing.field === 'imageUrl' ? (
+                      <td className="min-w-[140px] p-2">
+                        <InlineInput
+                          initial={e.imageUrl ?? ''}
+                          ariaLabel="Edit image URL"
                           onSave={(v) => {
                             setEditing(null);
-                            void patch(e.id, { audience: v });
+                            void patch(e.id, { imageUrl: v }); // '' clears
                           }}
                           onCancel={() => setEditing(null)}
                         />
                       </td>
                     ) : (
-                      <EditableCell label="audience" onEdit={() => setEditing({ id: e.id, field: 'audience' })}>
-                        <span className="flex max-w-[22ch] flex-wrap gap-1">
-                          {e.audience.map((t) => (
-                            <span
-                              key={t}
-                              className="inline-flex items-center rounded-full px-2 py-0.5 text-[12px] font-semibold"
-                              style={{ background: 'color-mix(in oklab, var(--ink) 7%, white)', color: 'var(--ink-soft)' }}
-                            >
-                              {t}
-                            </span>
-                          ))}
+                      <EditableCell label="image URL" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'imageUrl' })}>
+                        <span className="block max-w-[30ch] break-all text-[13px] leading-snug text-ink-soft" title={e.imageUrl ?? ''}>
+                          {e.imageUrl || <span className="opacity-50">—</span>}
                         </span>
                       </EditableCell>
                     )}
 
-                    <td className="px-3 py-2">
-                      <span className="num block whitespace-nowrap text-[13px] text-ink-soft">
-                        {formatDateRange(e.startsAt, e.endsAt) || (e.timeline ?? '').replace(/\n/g, ' ') || '\u00A0'}
-                      </span>
-                    </td>
-
-                    <td className="px-3 py-2">
-                      <div className="mt-1">
-                        <CategoryPicker
-                          value={e.category}
-                          onChange={(c: CategoryId) => void patch(e.id, { category: c })}
-                        />
-                      </div>
-                    </td>
-
-                    <td className="px-3 py-2">
+                    <td className="min-w-[170px] px-3 py-2">
                       <div className="mt-1 flex items-center gap-2">
                         <FuseAction
                           label="Approve"
