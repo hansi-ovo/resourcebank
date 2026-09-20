@@ -12,3 +12,12 @@
 **Out of bounds**: no real AI/crawler integrations, no deployment to any server (Phase 6 produces config files only), no changes to plan tokens without a questions.md note, no editing vendored react-bits sources.
 **CRITICAL — image files**: NEVER use the Read tool on binary/image files (logo PNG, any .png/.jpg/.webp). The build model may not support image input and will error. Download the logo with `curl -o` / `Invoke-WebRequest`; verify it only via file size (>5KB) and PNG magic bytes — never by viewing. Playwright screenshots for QA get saved to `.omo/reviews/` as files, not opened.
 **When done**: record Definition-of-done evidence (04 §Definition of done) under `.omo/reviews/` and summarize.
+
+**Resource discipline (host has a CPU guard at 90% — violations pause your session):**
+- Never spawn parallel subagents; do everything serially in-process
+- One heavy process at a time: no `npm install` while tests run, no dev server while building; prefer one-shot checks (`tsc --noEmit`, `vite build`) over watch mode during phase verification
+- Tests: cap concurrency (e.g. `maxWorkers` ≈ 2 in vitest config; `workers: 1` for Playwright, headless)
+- Playwright runs only at phase-acceptance points, minimum viable scenarios, no stress sweeps
+- Never open images/binary via Read (already in Out of bounds); screenshots are files, not viewed
+- If the harness pauses you with "system cpu overloaded": stop issuing commands, wait for load to clear (it auto-resumes); never enter retry loops, and never respond to a pause by spawning more work
+- Long compilations: `npm install` once per phase; reuse installed node_modules across checks

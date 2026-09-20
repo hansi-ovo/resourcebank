@@ -44,6 +44,14 @@ html {
   scroll-behavior: smooth;
 }
 
+/* ClickSpark: raise the spark canvas above ALL positioned content layers
+   (hero z-2, sticky headers z-20, TOC z-30, modal z-200) so clicks spark
+   everywhere — including the home page and inside the modal (client request).
+   The wrapper div in main.tsx carries .click-spark-host. */
+.click-spark-host canvas {
+  z-index: 2147483000;
+}
+
 /* hide the right-hand page scrollbar (client request); scrolling stays enabled */
 ::-webkit-scrollbar {
   width: 0;

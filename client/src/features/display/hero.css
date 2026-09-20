@@ -1,12 +1,13 @@
-/* Display hero — layout per 02-design-system §3 (split 7/5) + client revisions. */
+/* Display hero — client revision 2 (调试.md items 1.1–1.7). */
 
 .hero-root {
   position: relative;
-  min-height: 100vh;
+  min-height: 100vh; /* whole page fits on screen — no scroll (request 1.1) */
+  max-height: 100vh;
+  overflow: hidden;
   background: var(--canvas);
   display: flex;
   flex-direction: column;
-  overflow: hidden;
 }
 
 /* CursorGrid canvas: absolute full-bleed under content */
@@ -23,19 +24,21 @@
   z-index: 2;
 }
 
+/* compact header so everything fits without scrolling (request 1.1) */
 .hero-header {
-  padding: 24px 32px;
+  padding: 12px 32px 0;
 }
 
 .hero-main {
   flex: 1;
   display: grid;
   grid-template-columns: 7fr 5fr;
-  gap: 24px;
+  gap: 20px;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: 4vh 32px 10vh;
+  /* tight paddings: logo → title gap minimized (request 1.1) */
+  padding: 0 32px 2vh;
   align-items: center;
   z-index: 2;
 }
@@ -43,18 +46,18 @@
 .hero-left {
   display: flex;
   flex-direction: column;
-  gap: 26px;
+  gap: 18px;
 }
 
 .hero-title {
   font-family: var(--font-display);
   font-size: var(--fs-display);
   line-height: 1.04;
-  /* bolder initial weight (request 3b) — was 640 */
   font-weight: 740;
   letter-spacing: -0.015em;
   color: var(--ink);
   min-height: 1.1em;
+  margin: 0;
 }
 
 .hero-title-blur {
@@ -71,35 +74,32 @@
   font-weight: 740;
 }
 
-/* ── sequential 2s reveal (request 3c.i) ─────────────────────────────
-   title settles first (BlurText), then:
-   subtitle at 0s → description at 0.6s → CTA at 1.2s (each 0.8s fade) */
+/* ── sequential reveal — gated on the falling words passing 2/3 (req 1.5) ── */
 .hero-seq {
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: 16px;
   max-width: 70ch;
 }
 
 .hero-seq > * {
   opacity: 0;
-  transform: none;
 }
 
 .hero-seq.is-on > * {
-  animation: hero-fade-in 800ms ease forwards;
+  animation: hero-fade-in 700ms ease forwards;
 }
 
 .hero-seq.is-on .hero-subtitle {
-  animation-delay: 0s;
+  animation-delay: 0ms;
 }
 
 .hero-seq.is-on .hero-body {
-  animation-delay: 600ms;
+  animation-delay: 450ms;
 }
 
 .hero-seq.is-on .hero-cta {
-  animation-delay: 1200ms;
+  animation-delay: 900ms;
 }
 
 @keyframes hero-fade-in {
@@ -113,11 +113,11 @@
   }
 }
 
-/* ── subtitle restyle (request 3a): bigger, bolder, tinted, underlined ── */
+/* ── subtitle (request 1.6: slightly smaller than before) ── */
 .hero-subtitle {
   margin: 0;
   font-family: var(--font-display);
-  font-size: clamp(24px, 3vw, 34px);
+  font-size: clamp(20px, 2.4vw, 27px); /* was clamp(24px, 3vw, 34px) */
   font-weight: 800;
   letter-spacing: -0.01em;
   line-height: 1.2;
@@ -125,7 +125,7 @@
   text-decoration: underline;
   text-decoration-color: color-mix(in oklab, var(--cat-on-campus) 45%, transparent);
   text-decoration-thickness: 3px;
-  text-underline-offset: 8px;
+  text-underline-offset: 7px;
   width: fit-content;
 }
 
@@ -135,19 +135,19 @@
   color: var(--ink-soft);
 }
 
+/* keyword tints — no scale (it made the commas overlap the words; req 1.7) */
 .hero-keyword {
   font-weight: 650;
   display: inline-block;
-  transform: scale(1.06);
-  transform-origin: left bottom;
+  margin: 0 1px;
 }
 
 .hero-cta {
   align-self: flex-start;
-  margin-top: 8px;
+  margin-top: 6px;
   border: 0;
   border-radius: 999px;
-  padding: 14px 32px;
+  padding: 13px 30px;
   font-family: var(--font-body);
   font-size: 16px;
   font-weight: 700;
@@ -167,26 +167,27 @@
   transform: scale(0.98);
 }
 
-/* ── falling-letters bed (request 3c.iii) ────────────────────────────
-   ~1/5 viewport height, pinned to the bottom, behind content, low opacity */
+/* ── falling words layer (request 1.4/1.5) ───────────────────────────
+   full-viewport physics layer behind the content; draggable words */
 .hero-fall-bed {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 20vh;
+  inset: 0;
   z-index: 1;
-  opacity: 0.16;
-  pointer-events: none;
-  font-weight: 500;
-  color: var(--cat-on-campus);
 }
 
-.hero-fall-bed > div {
-  height: 100%;
+.hero-fall-bed canvas {
+  display: none !important;
 }
 
-/* ── showcase strip (D20 + request 3c.iv) ──────────────────────────── */
+.hero-fall-bed span {
+  cursor: grab;
+}
+
+.hero-fall-bed span:active {
+  cursor: grabbing;
+}
+
+/* ── showcase strip ─────────────────────────────────────────────────── */
 
 .showcase {
   position: relative;
@@ -225,7 +226,6 @@
     transform 240ms ease;
 }
 
-/* stronger docked emphasis (request 3c.iv) */
 .showcase-item.is-docked {
   opacity: 1;
   transform: scale(1.02);
@@ -271,7 +271,7 @@
   color: var(--ink);
 }
 
-/* mobile: static tinted pills */
+/* mobile */
 .showcase-mobile {
   display: none;
 }
@@ -279,7 +279,9 @@
 @media (max-width: 959px) {
   .hero-main {
     grid-template-columns: 1fr;
-    padding-top: 2vh;
+  }
+  .hero-root {
+    max-height: none;
   }
   .showcase-viewport {
     display: none;
@@ -298,9 +300,6 @@
     background: color-mix(in oklab, var(--cat) 10%, white);
     color: color-mix(in oklab, var(--cat) 70%, #1a2b2a);
     justify-self: start;
-  }
-  .hero-fall-bed {
-    height: 14vh;
   }
 }
 

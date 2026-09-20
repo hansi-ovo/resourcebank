@@ -80,15 +80,19 @@ export function EntryModal({ entry, onClose }: { entry: Entry; onClose: () => vo
         data-cat={entry.category}
         style={{ ['--cat' as string]: tint }}
       >
-        <button
-          type="button"
-          data-modal-close
-          className="modal-close"
-          aria-label="Close"
-          onClick={onClose}
-        >
-          <CloseIcon className="h-4 w-4" />
-        </button>
+        {/* sticky close row: pinned to the card's top-right even when the
+            content scrolls (request 2.3) */}
+        <div className="modal-close-row">
+          <button
+            type="button"
+            data-modal-close
+            className="modal-close"
+            aria-label="Close"
+            onClick={onClose}
+          >
+            <CloseIcon className="h-4 w-4" />
+          </button>
+        </div>
 
         <div className="modal-image" aria-hidden={!entry.imageUrl || imgBroken}>
           {entry.imageUrl && !imgBroken ? (

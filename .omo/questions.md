@@ -57,7 +57,23 @@ Autonomous-mode log per WORKORDER. Each line: decision → default taken → rat
 
 ---
 
+## Client revision round 2 (调试.md, 2026-09-19)
+
+- **ClickSpark 首页不显示的根因** → vendor 的 spark canvas 是 wrapper 内无 z-index 的 absolute 元素，被首页内容层（z-2）/弹窗（z-200）盖住。修复：main.tsx 外包 `.click-spark-host`，app.css 把 canvas 提到 z-index 2147483000（未改 vendor 文件）。首页任意处与弹窗内点击都有火花（与其它页一致）。
+- **掉落单词 v2（1.4/1.5）** → vendor FallingText 无法表达"顶部三排生成/2/3 处渐隐/拖拽回落"，自建 `FallingWords.tsx`（Matter.js，DOM span + 物理体逐帧同步）。三排整齐词顶部生成（约 45% 带分类色 pill 背景）→ 立即快速下落（随机初速 ±4.5px/s、随机缩放 0.8–1.4×、随机角速度）→ y>2/3 视口开始 1→0.5 渐隐 → 底部凌乱堆积；MouseConstraint 拖拽按鼠标方向移动、松手自然下落。**关键 bug 修复**：span 漏设 `position:absolute` 导致 left/top 同步无效（词停顶部不动）——补上后实测 t=0.5s 途中、t=1.5s 沉底（698–934px @900px 视口）。
+- **1.5 加载顺序** → 词先落，穿过 2/3 线（约 1.1s，`onDropped` 回调）才触发 标题→副标题→描述 依次出现（各 700ms、错峰 450ms）。
+- **1.1 一屏无滚动** → header 12px、main 上下 0/2vh、gap 18px、`.hero-root max-height:100vh + overflow:hidden`；实测 scrollHeight ≤ innerHeight。
+- **1.2 网格透明度** → CursorGrid maxOpacity 0.55（+20%+）、gridOpacity 0.05、fillOpacity 0.06；鼠标半径 170 内由组件高斯衰减自然提亮（相当于光标附近再增亮）。
+- **1.6 副标题缩小** → clamp(24,3vw,34) → clamp(20,2.4vw,27)。
+- **1.7 逗号重叠** → 根因是关键词 `transform: scale(1.06)` 让词盒外扩盖住逗号；去掉缩放改为 weight 650 + 1px margin。
+- **2.1/2.2 目录** → 折叠：18×3px 直角细条、无背景、贴右缘；展开：5px 高 22px 宽粗条 + 标签，背景 38% 白 + 3px blur、直角、无边框线（无分界）。
+- **2.3 弹窗** → 直角（卡片/图片/按钮 radius 0）；关闭按钮改 `position:sticky top:0` 行，内容滚动仍钉在卡片右上角（实测滚动 400px 后坐标不变）；图标 hover 旋转 90°、active 180°。
+- **2.4 区块描述** → 五段文案 verbatim 存 `categoryDescriptions.ts`，渲染在标题与色条之间（14px ink-soft）。
+- **3 内容替换** → 按附件表格 24 条全量重置（校内 4 / 奖学金 12 / 体验 3 / 会议 3 / 培训 2）；OL 行表格为 "/"，占位 URL `…/leadership/orientation-leader`（URL 是全局去重键，须唯一）。**Program images 未实现**，原因：(a) 各官网反爬/图片版权不明，服务端代抓有法律与稳定性风险；(b) 微信公众号图床（Horizon）有防盗链；(c) 大陆部署下外站图片可达性无保障；(d) 无稳定的每项目官方图源约定。卡片暂用分类色占位瓦片，客户端提供每项目图片 URL 后只需在表格加一列、seed 一行字段即可接入（image_url 字段与展示/回退链路已就绪）。
+- **验证** → 28/28 Playwright + 31/31 Vitest；实测首页 scrollHeight ≤ innerHeight（1.1）、关闭按钮滚动后钉住（2.3）、词 1.5s 沉底（1.4）；截图 `.omo/reviews/revision2/`。
+
 ## Client revision round 1 (2026-09-19, five feedback items)
+
 
 - **Images didn't arrive** → all four attachments (new logo, falling-words table, screenshots) failed to transfer — the worker session's model channel doesn't accept image input. Items depending on them used documented fallbacks, listed below.
 - **1 — Logo** → the yuque content sheet row 0 contains the logo CDN URL (`…1789817205962-…png`, 10280×2089 wide lockup, 507KB PNG) — downloaded and bundled as `client/public/logo.png` (PNG magic + size verified, never viewed). `Logo.tsx` now sizes by height (36px) with auto width — no more square distortion. If the attached logo differs from the sheet's, replace the single file. **Recommended format for any future swap**: SVG (vector, one file works at 36px header + favicon), or PNG with transparent background ≥ 480px on the long edge.

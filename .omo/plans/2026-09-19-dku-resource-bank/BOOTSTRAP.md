@@ -17,6 +17,7 @@
 - GSAP 动画只用 transform/opacity；will-change 只用于过渡 overlay。
 - 全程英文界面文案按 03-pages-spec.md 的 copy deck 逐字使用，⚑ 项记录到 .omo/questions.md 留给客户事后确认。
 - 每完成一个 Phase 做一次 git 提交。全部完成后把验收证据写入 .omo/reviews/ 并输出总结。
+- 资源纪律：宿主机有 90% CPU 保护阈值，会暂停会话。禁止并行子代理，串行执行；一次只跑一个重进程；vitest 限并发（maxWorkers≈2）、Playwright workers:1 且仅在实际验收时运行；若收到 system cpu overloaded，停下等待自动恢复，绝不重试循环。
 ```
 
 ## Paste-ready prompt (English version, if the session prefers English)

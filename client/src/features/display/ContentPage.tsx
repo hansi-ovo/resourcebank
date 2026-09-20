@@ -6,11 +6,17 @@ import { Logo } from '@/components/ui/Logo';
 import { domain, displayImageUrl } from '@/lib/format';
 import { EntryModal } from './EntryModal';
 import { CATEGORIES, type Entry, type PublishedSection } from 'shared/types';
+import { CATEGORY_DESCRIPTIONS } from './categoryDescriptions';
 import './content-page.css';
 import { gsap } from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
 
 gsap.registerPlugin(ScrollTrigger);
+
+/**
+ * Category section descriptions (request 2.4) — copy from the client's
+ * 调试.md, rendered under each section title.
+ */
 
 /**
  * Display content page `/resources` (03-pages §Display content page).
@@ -189,6 +195,11 @@ export function ContentPage() {
               <h2 className="content-title" data-section-title>
                 {cat.label}
               </h2>
+              {CATEGORY_DESCRIPTIONS[cat.id] ? (
+                <p className="content-section-desc" data-section-desc>
+                  {CATEGORY_DESCRIPTIONS[cat.id]}
+                </p>
+              ) : null}
               <div className="content-rule" data-rule />
               {empty ? (
                 <p className="content-empty">

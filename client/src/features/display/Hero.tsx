@@ -1,18 +1,12 @@
-import { Suspense, useEffect, useRef, useState } from 'react';
-import React from 'react';
+import { useEffect, useRef, useState } from 'react';
 import BlurText from '@/components/react-bits/BlurText';
 import VariableProximity from '@/components/react-bits/VariableProximity';
 import CursorGrid from '@/components/react-bits/CursorGrid';
 import { Logo } from '@/components/ui/Logo';
 import { useReducedMotion } from '@/lib/motion';
 import { CATEGORIES } from 'shared/types';
+import { FallingWords } from './FallingWords';
 import './hero.css';
-
-// matter-js (FallingText's physics engine) is ~50KB gz — load the falling bed
-// AFTER first paint so it never blocks the hero's critical path.
-const FallingText = React.lazy(() =>
-  import('@/components/react-bits/FallingText').then((m) => ({ default: m.default })),
-);
 
 /** First published seed entry name per category — showcase items (⚑ client re-picks). */
 const SHOWCASE_ITEMS: Record<string, string> = {
@@ -31,48 +25,48 @@ const KEYWORD_TINTS: Array<{ word: string; tint: string }> = [
 ];
 
 /**
- * Falling-word pool (client request 3c.iii): drawn from the site description
- * + the client's content sheet program names. Words fall into a ~1/5-height
- * low-opacity bed behind the hero content.
+ * Falling word list (request 1.4): rendered as three tidy rows at the very
+ * top, then dropped with physics (messy, scaled, draggable, bottom pile).
  */
 const FALLING_WORDS = [
   'leadership', 'fellowships', 'scholarships', 'experiences', 'opportunities',
-  'schwarzman', 'rhodes', 'fulbright', 'yenching', 'millennium', 'erasmus',
   'campus', 'conference', 'symposium', 'training', 'mentorship', 'research',
-  'community', 'global', 'programs', 'discovery', 'growth', 'impact', 'summit',
-  'advising', 'consulting', 'sustainability', 'entrepreneurship', 'exchange',
-  'princeton', 'harvard', 'oxford', 'tsinghua', 'peking', 'duke', 'kunshan',
+  'community', 'global', 'programs', 'summit', 'exchange', 'discovery',
+  'internships', 'governance', 'consulting', 'sustainability', 'networking',
 ];
 
 /**
- * Display hero `/` (03-pages §Display hero + client revision requests).
- * Split 7/5; 2s sequential reveal (title → subtitle → description → CTA);
- * CursorGrid mouse effect; falling-letters background bed; faster showcase
- * drift with prominent docked emphasis.
+ * Display hero `/` — client revision 2.
+ * Load order (1.5): falling words drop FIRST and immediately; once they pass
+ * ~2/3 of the viewport the title → subtitle → description reveal runs.
  */
 export function Hero({ onStarted }: { onStarted: () => void }) {
   const reduced = useReducedMotion();
   const leftRef = useRef<HTMLDivElement>(null);
+  const [wordsDropped, setWordsDropped] = useState(false);
   const [titleSettled, setTitleSettled] = useState(false);
 
   useEffect(() => {
-    if (reduced) setTitleSettled(true);
+    if (reduced) {
+      setWordsDropped(true);
+      setTitleSettled(true);
+    }
   }, [reduced]);
 
   return (
     <div className="hero-root" data-hero-root>
-      {/* mouse-follow grid in theme green/blue (request 3c.ii) */}
+      {/* mouse-follow grid (request 1.2) */}
       {!reduced ? (
         <CursorGrid
           className="hero-cursor-grid"
           cellSize={56}
           color="#336472"
-          radius={150}
+          radius={170}
           falloff="smooth"
-          maxOpacity={0.35}
+          maxOpacity={0.55}
           lineWidth={1}
-          fillOpacity={0.05}
-          gridOpacity={0.04}
+          fillOpacity={0.06}
+          gridOpacity={0.05}
           clickPulse={false}
         />
       ) : null}
@@ -119,15 +113,14 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
             )}
           </h1>
 
-          {/* 2s sequential reveal: subtitle (0.7s) → description (1.3s) → CTA (1.9s) */}
-          <div className={`hero-seq ${titleSettled || reduced ? 'is-on' : ''}`}>
+          <div className={`hero-seq ${titleSettled ? 'is-on' : ''}`}>
             <p className="hero-subtitle">Discover Opportunities Beyond the Classroom</p>
             <p className="hero-body">
-              Leadership development does not happen in a single program—it happens through a series
-              of <TintedWord word="experiences" />. This Resource Bank is curated by DKU Leadership
-              Programs to help students discover high-quality opportunities inside and outside Duke
-              Kunshan University, including <TintedWord word="Fellowships" />,{' '}
-              <TintedWord word="Event" />, <TintedWord word="Conference" />, and other
+              Leadership development does not happen in a single program—it happens through a
+              series of <TintedWord word="experiences" />. This Resource Bank is curated by DKU
+              Leadership Programs to help students discover high-quality opportunities inside and
+              outside Duke Kunshan University, including <TintedWord word="Fellowships" />
+              , <TintedWord word="Event" />, <TintedWord word="Conference" />, and other
               developmental experiences.
             </p>
             <button type="button" className="hero-cta" onClick={onStarted}>
@@ -139,19 +132,14 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
         <ShowcaseStrip reduced={reduced} />
       </main>
 
-      {/* falling-letters bed (request 3c.iii) — lazy: physics engine off the
-          critical path; words start dropping in shortly after paint */}
+      {/* falling words (request 1.4/1.5): drop first; the copy reveal is gated
+          on their descent past the 2/3 mark (~1.1s) */}
       {!reduced ? (
-        <div className="hero-fall-bed" aria-hidden="true">
-          <Suspense fallback={null}>
-            <FallingText
-              text={FALLING_WORDS.join(' ')}
-              trigger="auto"
-              gravity={0.9}
-              fontSize="15px"
-            />
-          </Suspense>
-        </div>
+        <FallingWords
+          className="hero-fall-bed"
+          words={FALLING_WORDS}
+          onDropped={() => setWordsDropped(true)}
+        />
       ) : null}
     </div>
   );
@@ -167,8 +155,7 @@ function TintedWord({ word }: { word: string }) {
 }
 
 /**
- * Showcase strip (D20 + request 3c.iv): faster drift (18px/s), stronger
- * non-docked demotion, bolder docked treatment.
+ * Showcase strip (D20 + request 1): fast drift, strong docked emphasis.
  */
 function ShowcaseStrip({ reduced }: { reduced: boolean }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -185,7 +172,7 @@ function ShowcaseStrip({ reduced }: { reduced: boolean }) {
     let last = performance.now();
     let activeRow = -1;
 
-    const DRIFT_PX_PER_S = 18; // faster (was 6)
+    const DRIFT_PX_PER_S = 18;
     const total = CATEGORIES.length * itemHeight;
 
     const tick = (now: number) => {

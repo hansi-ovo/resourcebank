@@ -33,9 +33,11 @@ function App() {
     <AuthProvider>
       <ToastProvider>
         {/* Global click spark on every page (client request: react-bits ClickSpark).
-            sparkColor = DKU green from the brand ramp. */}
-        <ClickSpark sparkColor="#3E7A5C" sparkSize={10} sparkRadius={18} sparkCount={8}>
-          <Routes>
+            sparkColor = DKU green from the brand ramp. The .click-spark-host class
+            raises the spark canvas above all content layers (app.css). */}
+        <div className="click-spark-host w-full min-h-screen">
+          <ClickSpark sparkColor="#3E7A5C" sparkSize={10} sparkRadius={18} sparkCount={8}>
+            <Routes>
             {/* Display */}
             <Route path="/" element={<HeroPage />} />
             <Route
@@ -57,7 +59,8 @@ function App() {
             />
             <Route path="*" element={<NotFound />} />
           </Routes>
-        </ClickSpark>
+          </ClickSpark>
+        </div>
       </ToastProvider>
     </AuthProvider>
   );
