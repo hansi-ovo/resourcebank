@@ -61,7 +61,7 @@ Useful scripts:
 
 ```bash
 npm run test -w server          # Vitest (63 tests: state machine, dedupe, scoring, auth, SSE, LLM JSON, search pipeline)
-npx playwright test             # E2E (28 tests; auto-resets dev DB, FAST_MODE=300ms, SEARCH_SOURCE pinned off)
+npx playwright test             # E2E (28 tests; ISOLATED servers :8790/:5174 + throwaway DB — never touches your dev data)
 npm run build                   # typecheck + build server (esbuild ESM) + client (Vite)
 node scripts/acceptance.mjs     # API lifecycle walk (login → search → edit → approve → withdraw → SSE)
 node scripts/llm-smoke.mjs      # LLM gateway smoke test (lists models, one chat call)
