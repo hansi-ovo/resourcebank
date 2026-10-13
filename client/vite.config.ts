@@ -4,6 +4,18 @@ import tailwindcss from '@tailwindcss/vite';
 import path from 'node:path';
 import fs from 'node:fs';
 
+// Dev-server resilience: when the backend (:8787) restarts or dies while a
+// browser holds an SSE connection through the proxy, the aborted sockets can
+// surface as unhandled ECONNRESET/EPIPE inside the proxy layer and kill the
+// whole Vite process (observed with /api/stream + backend restart). Swallow
+// exactly that socket noise; every other error keeps crashing loudly.
+process.on('uncaughtException', (err) => {
+  const code = (err as NodeJS.ErrnoException)?.code;
+  const socketNoise = code === 'ECONNRESET' || code === 'EPIPE';
+  if (!socketNoise) throw err;
+  console.warn(`[vite] ignored proxy socket error: ${err.message}`);
+});
+
 /** After the build, inject font preloads into dist/index.html (hashed URLs). */
 function fontPreload(): Plugin {
   return {
