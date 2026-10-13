@@ -57,13 +57,27 @@ const sum = await api('GET', '/api/summary');
 step('summary reviewCount > 0', sum.json.reviewCount > 0);
 step('summary lastSearchAt null before search', sum.json.lastSearchAt === null);
 
-// 3. search (FAST_MODE 300ms)
+// 3. search — poll until finished instead of a fixed sleep: FAST_MODE mock
+// lands in well under a second, but a real search source (SEARCH_SOURCE set)
+// legitimately runs for minutes; don't fail the walk on provider latency.
 const search = await api('POST', '/api/search', { prompt: 'climate research expedition', scope: 'all' });
 step('search 202 with jobId', search.status === 202 && search.json.jobId > 0);
-await new Promise((r) => setTimeout(r, 900));
-const sum2 = await api('GET', '/api/summary');
-step('search finished', sum2.json.searchRunning === false);
-step('lastSearchAt set', typeof sum2.json.lastSearchAt === 'string');
+let sum2 = null;
+const searchDeadline = Date.now() + 10 * 60_000;
+while (Date.now() < searchDeadline) {
+  await new Promise((r) => setTimeout(r, 500));
+  try {
+    const s = await api('GET', '/api/summary');
+    if (s.json && s.json.searchRunning === false) {
+      sum2 = s;
+      break;
+    }
+  } catch {
+    /* transient network — next tick retries */
+  }
+}
+step('search finished', sum2 !== null);
+step('lastSearchAt set', sum2 !== null && typeof sum2.json.lastSearchAt === 'string');
 
 // 4. inline edit on a review entry
 const reviewList = await api('GET', '/api/entries?status=review');
