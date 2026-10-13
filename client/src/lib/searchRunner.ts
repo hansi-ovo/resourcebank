@@ -1,5 +1,5 @@
 import { api } from './api';
-import type { AdminSummary, Scope } from 'shared/types';
+import type { AdminSummary, Scope, SearchStats } from 'shared/types';
 
 /**
  * Module-level search job runner: survives navigation (the search must never
@@ -11,6 +11,8 @@ import type { AdminSummary, Scope } from 'shared/types';
 export interface SearchFinishEvent {
   added: number;
   finishedAt: string | null;
+  /** Funnel counters from /api/summary (null when the provider reports none). */
+  stats: SearchStats | null;
 }
 
 const listeners = new Set<(e: SearchFinishEvent) => void>();
@@ -35,23 +37,40 @@ function fire(e: SearchFinishEvent): void {
  * `followRunningSearch`: any admin mount re-attaches to a server-side
  * running job via /api/summary.)
  */
+const POLL_MS = 500;
+/** Real pipelines (web search + LLM extraction) legitimately take minutes. */
+const MAX_WAIT_MS = 20 * 60_000;
+
 export async function startSearch(prompt: string, scope: Scope): Promise<void> {
   if (running) return;
   running = true;
   try {
     const before = (await api.get<AdminSummary>('/api/summary')).reviewCount;
     await api.post('/api/search', { prompt, scope });
-    for (let i = 0; i < 240; i++) {
-      await new Promise((r) => setTimeout(r, 500));
-      const sum = await api.get<AdminSummary>('/api/summary');
-      if (!sum.searchRunning) {
-        fire({ added: Math.max(0, sum.reviewCount - before), finishedAt: sum.lastSearchAt });
+    const startedAt = Date.now();
+    for (;;) {
+      await new Promise((r) => setTimeout(r, POLL_MS));
+      let sum: AdminSummary | null = null;
+      try {
+        sum = await api.get<AdminSummary>('/api/summary');
+      } catch {
+        /* transient network — the next tick retries */
+      }
+      if (sum && !sum.searchRunning) {
+        fire({
+          added: Math.max(0, sum.reviewCount - before),
+          finishedAt: sum.lastSearchAt,
+          stats: sum.lastSearchStats,
+        });
+        return;
+      }
+      if (Date.now() - startedAt > MAX_WAIT_MS) {
+        fire({ added: 0, finishedAt: null, stats: null }); // gave up waiting
         return;
       }
     }
-    fire({ added: 0, finishedAt: null });
   } catch {
-    fire({ added: -1, finishedAt: null }); // signal failure
+    fire({ added: -1, finishedAt: null, stats: null }); // signal failure
   } finally {
     running = false;
   }
@@ -71,7 +90,11 @@ export async function followRunningSearch(): Promise<() => void> {
       const sum = await api.get<AdminSummary>('/api/summary');
       if (!sum.searchRunning) {
         window.clearInterval(timer);
-        fire({ added: Math.max(0, sum.reviewCount - before), finishedAt: sum.lastSearchAt });
+        fire({
+          added: Math.max(0, sum.reviewCount - before),
+          finishedAt: sum.lastSearchAt,
+          stats: sum.lastSearchStats,
+        });
       }
     } catch {
       /* transient network — next tick retries */

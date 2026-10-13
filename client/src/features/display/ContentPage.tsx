@@ -35,7 +35,11 @@ export function ContentPage() {
       const fresh = await api.get<PublishedSection[]>('/api/published');
       setSections(fresh);
     } catch {
-      setSections((prev) => prev ?? []);
+      // No API reachable (e.g. single-file export opened via file://) —
+      // fall back to the embedded demo snapshot so the catalog still shows.
+      // Dynamic import keeps the snapshot out of the normal production bundle.
+      const { DEMO_SECTIONS } = await import('@/lib/demoSnapshot');
+      setSections((prev) => prev ?? DEMO_SECTIONS);
     }
   }, []);
 
@@ -119,6 +123,7 @@ export function ContentPage() {
     const ctx = gsap.context(() => {
       document.querySelectorAll<HTMLElement>('.content-section').forEach((section) => {
         const title = section.querySelector('[data-section-title]');
+        const desc = section.querySelector('[data-section-desc]');
         const rule = section.querySelector('[data-rule]');
         const tl = gsap.timeline({
           scrollTrigger: { trigger: section, start: 'top 78%', once: true },
@@ -129,6 +134,14 @@ export function ContentPage() {
             { y: 14, opacity: 0 },
             { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' },
             0,
+          );
+        // category description fades in with the title (request 2, rev 6)
+        if (desc)
+          tl.fromTo(
+            desc,
+            { y: 10, opacity: 0 },
+            { y: 0, opacity: 1, duration: 0.6, ease: 'power2.out' },
+            0.08,
           );
         if (rule)
           tl.fromTo(rule, { scaleX: 0 }, { scaleX: 1, duration: 0.65, ease: 'power2.out' }, 0.05);
@@ -272,26 +285,29 @@ export function ContentPage() {
   );
 }
 
-/** Fixed right rail (02-design-system §5): ticks expand on hover/focus,
- *  click/Enter jumps, scroll-spy sets aria-current + wide tick. */
+/** Left vertical timeline TOC (rev 9, request: 删除右侧目录) — a slim
+ *  vertical rail with category-tinted nodes and always-visible labels.
+ *  Mounts with a top-to-bottom stagger fade on first interaction-safe
+ *  render (常驻: stays visible afterwards); click/Enter jumps; scroll-spy
+ *  sets aria-current + enlarges the active node. */
 function SectionTOC({ active, onJump }: { active: string; onJump: (id: string) => void }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    const id = window.requestAnimationFrame(() => setMounted(true));
+    return () => window.cancelAnimationFrame(id);
+  }, []);
   return (
-    <nav
-      className="section-toc"
-      aria-label="Sections"
-      data-toc
-      onMouseLeave={(e) => e.currentTarget.classList.remove('is-open')}
-    >
+    <nav className={`section-toc ${mounted ? 'is-in' : ''}`} aria-label="Sections" data-toc>
+      <span className="toc-rail" aria-hidden="true" />
       <div className="toc-list">
-        {CATEGORIES.map((c) => (
+        {CATEGORIES.map((c, i) => (
           <button
             key={c.id}
             type="button"
             className={`toc-item ${active === c.id ? 'is-active' : ''}`}
             aria-current={active === c.id ? 'true' : undefined}
             onClick={() => onJump(c.id)}
-            onFocus={(e) => e.currentTarget.closest('.section-toc')?.classList.add('is-open')}
-            onMouseEnter={(e) => e.currentTarget.closest('.section-toc')?.classList.add('is-open')}
+            style={{ transitionDelay: mounted ? `${i * 70}ms` : '0ms' }}
           >
             <span className="toc-tick" data-toc-tick data-cat={c.id} aria-hidden="true" />
             <span className="toc-label">{c.label}</span>

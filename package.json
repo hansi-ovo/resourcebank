@@ -17,6 +17,7 @@
   "scripts": {
     "dev": "concurrently -n server,client -c green,blue \"npm run dev -w server\" \"npm run dev -w client\"",
     "build": "npm run build -w shared && npm run build -w server && npm run build -w client",
+    "export:demo": "npm run build:export -w client",
     "test": "npm run test -w server"
   }
 }

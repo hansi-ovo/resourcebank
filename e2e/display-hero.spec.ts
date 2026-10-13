@@ -40,57 +40,55 @@ test('hero: title bolder, subtitle styled, 2s sequential reveal completes', asyn
   // cursor grid canvas present (mouse effect layer)
   expect(await page.locator('.hero-cursor-grid canvas').count()).toBe(1);
 
-  // falling-letters bed present
-  expect(await page.locator('.hero-fall-bed').count()).toBe(1);
+  // background word bed removed (rev 13)
+  expect(await page.locator('.hero-word-bed').count()).toBe(0);
 
   // VariableProximity takes over after settle
   await expect(page.locator('.hero-title-vp')).toBeVisible({ timeout: 8_000 });
 });
 
-test('showcase drifts faster and docks exactly one row', async ({ page }) => {
+test('showcase 3D wheel revolves, driven by wheel and drag', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('.showcase-item').first()).toBeVisible();
+  const wheel = page.locator('[data-showcase-wheel]');
+  await expect(wheel).toBeVisible();
 
-  const t1 = await page.evaluate(() => document.querySelector('.showcase-list')?.style.transform ?? '');
+  // cards carry project names + images from /api/published
+  await expect(wheel.locator('.showcase-wheel-card').first()).toBeVisible();
+  expect(await wheel.locator('.showcase-wheel-card').count()).toBeGreaterThan(2);
+
+  // continuous auto-rotation: some card transform changes over time
+  const t1 = await page.evaluate(
+    () => document.querySelector('.showcase-wheel-card')?.getAttribute('style') ?? '',
+  );
   await page.waitForTimeout(700);
-  const t2 = await page.evaluate(() => document.querySelector('.showcase-list')?.style.transform ?? '');
+  const t2 = await page.evaluate(
+    () => document.querySelector('.showcase-wheel-card')?.getAttribute('style') ?? '',
+  );
   expect(t1).not.toBe(t2);
 
-  // parse Y offsets (transform is like "translate3d(0, -504.2px, 0)") to
-  // confirm the faster drift speed
-  const yOf = (t) => Math.abs(Number(/translate3d\([^,]+, (-?[\d.]+)px/.exec(t)?.[1] ?? 0));
-  const y1 = yOf(t1);
-  const y2 = yOf(t2);
-  const moved = Math.abs(y2 - y1);
-  expect(moved).toBeGreaterThan(8);
-
-  expect(await page.locator('.showcase-item.is-docked').count()).toBe(1);
-
-  // hover pauses
-  await page.locator('.showcase').hover();
-  const p1 = await page.evaluate(() => document.querySelector('.showcase-list')?.style.transform ?? '');
-  await page.waitForTimeout(350);
-  const p2 = await page.evaluate(() => document.querySelector('.showcase-list')?.style.transform ?? '');
-  expect(p1).toBe(p2);
+  // wheel scroll spins the carousel
+  await wheel.hover();
+  await page.mouse.wheel(0, 240);
+  await page.waitForTimeout(120);
+  const t3 = await page.evaluate(
+    () => document.querySelector('.showcase-wheel-card')?.getAttribute('style') ?? '',
+  );
+  expect(t3).not.toBe(t2);
 });
 
-test('transition: color panels + giant words converge; lands on /resources', async ({ page }) => {
+test('transition: color panels converge into rule strips; lands on /resources', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('.hero-cta')).toBeVisible({ timeout: 12_000 });
 
   await page.getByRole('button', { name: 'Get started!' }).click();
 
-  // overlay appears with 5 panels + 5 words (single poll to avoid mid-flight
+  // overlay appears with 5 color panels (single poll to avoid mid-flight
   // stalls under load)
   const overlayReady = await page
     .waitForFunction(
       () => {
         const o = document.querySelector('[data-transition-overlay]');
-        if (!o) return false;
-        return (
-          o.querySelectorAll('[data-transition-panel]').length === 5 &&
-          o.querySelectorAll('[data-transition-word]').length === 5
-        );
+        return !!o && o.querySelectorAll('[data-transition-panel]').length === 5;
       },
       null,
       { timeout: 4_000 },
@@ -99,9 +97,10 @@ test('transition: color panels + giant words converge; lands on /resources', asy
     .catch(() => false);
   expect(overlayReady).toBe(true);
 
-  // mid-flight the route swapped beneath the overlay
-  await page.waitForTimeout(300);
-  expect(page.url()).toContain('/resources');
+  // mid-flight the route swaps beneath the overlay (~0.45s into the
+  // timeline — wait for it instead of a fixed sleep, which races on slow
+  // first-compile loads)
+  await page.waitForURL(/\/resources$/, { timeout: 6_000 });
 
   // overlay unmounts; sections arrived
   const overlay = page.locator('[data-transition-overlay]');
@@ -110,7 +109,7 @@ test('transition: color panels + giant words converge; lands on /resources', asy
   await expect(page.locator('[data-section-title]')).toHaveCount(5, { timeout: 10_000 });
   await expect(page.locator('.opportunity-card').first()).toBeVisible({ timeout: 10_000 });
 
-  // nothing overflows horizontally (request: words must not fly off-page)
+  // nothing overflows horizontally
   const overflowX = await page.evaluate(
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
@@ -124,9 +123,8 @@ test('reduced motion: static title, crossfade, no overlay/no canvas layers', asy
 
   await expect(page.locator('.hero-title-static')).toBeVisible();
   await expect(page.locator('.hero-cta')).toBeVisible({ timeout: 3_000 });
-  // no cursor grid / falling bed under reduced motion
+  // no cursor grid under reduced motion (word bed removed in rev 13)
   expect(await page.locator('.hero-cursor-grid').count()).toBe(0);
-  expect(await page.locator('.hero-fall-bed').count()).toBe(0);
 
   await page.getByRole('button', { name: 'Get started!' }).click();
   await expect(page).toHaveURL(/\/resources$/, { timeout: 4_000 });

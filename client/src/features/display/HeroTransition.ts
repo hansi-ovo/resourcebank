@@ -2,17 +2,15 @@ import { CATEGORIES } from 'shared/types';
 import { gsap } from 'gsap';
 
 /**
- * Signature moment v2 (request 3c.v): fullscreen color panels + giant words.
+ * Signature moment (rev 14: giant scatter words removed — fullscreen color
+ * panels only).
  *
  * Choreography (~1.35s, transforms/opacity only, nothing leaves the viewport):
  *  0.00s  build a fixed overlay
  *  0.00–0.45s  five full-screen category-color panels sweep in from
- *              alternating sides and slide together to cover the screen;
- *              giant category words fly in from off-screen to scattered
- *              positions across the color field (scatter)
+ *              alternating sides and slide together to cover the screen
  *  0.45s  route swaps to /resources beneath the opaque overlay
- *  0.50–0.95s  words converge toward their section-title positions while
- *              the panels collapse into thin tonal rule strips (converge)
+ *  0.50–0.95s  panels collapse into thin tonal rule strips (converge)
  *  0.95–1.35s  overlay fades as the real page (titles + rules) reveals;
  *              TOC ticks stagger in; overlay unmounts
  *
@@ -48,23 +46,8 @@ export function startHeroTransition(opts: StartOpts): void {
     return;
   }
 
-  const labels = Array.from(document.querySelectorAll<HTMLElement>('[data-showcase-label]'))
-    .filter((el, i, arr) => arr.findIndex((x) => x.dataset.cat === el.dataset.cat) === i)
-    .sort(
-      (a, b) =>
-        CATEGORIES.findIndex((c) => c.id === a.dataset.cat) -
-        CATEGORIES.findIndex((c) => c.id === b.dataset.cat),
-    );
-
-  if (labels.length === 0) {
-    swapRoute();
-    onDone();
-    return;
-  }
-
-  const cats = labels.map((el) => CATEGORIES.find((c) => c.id === el.dataset.cat)!);
+  const cats = CATEGORIES;
   const W = window.innerWidth;
-  const H = window.innerHeight;
 
   // ── build the overlay ────────────────────────────────────────────────
   const overlay = document.createElement('div');
@@ -90,34 +73,7 @@ export function startHeroTransition(opts: StartOpts): void {
     return p;
   });
 
-  // giant words — fly in from off-screen to scattered arrangement
-  const words = cats.map((c) => {
-    const w = document.createElement('div');
-    w.setAttribute('data-transition-word', c.id);
-    w.textContent = c.label;
-    w.style.cssText = `
-      position: absolute;
-      left: 0; top: 0;
-      font-family: var(--font-display);
-      font-size: ${Math.round(Math.min(W * 0.065, 78))}px;
-      font-weight: 800;
-      color: #ffffff;
-      white-space: nowrap;
-      letter-spacing: -0.02em;
-      text-shadow: 0 4px 40px rgba(0,0,0,0.18);
-      will-change: transform, opacity;
-    `;
-    overlay.appendChild(w);
-    return w;
-  });
-
   const heroRoot = document.querySelector('[data-hero-root]') as HTMLElement | null;
-
-  // scattered resting spots across the color field
-  const restSpots = cats.map((_, i) => ({
-    x: W * (0.05 + 0.14 * i),
-    y: H * (0.16 + 0.17 * ((i * 3) % 5)),
-  }));
 
   const tl = gsap.timeline({
     onComplete: () => {
@@ -126,23 +82,10 @@ export function startHeroTransition(opts: StartOpts): void {
     },
   });
 
-  // ── phase 1 (0–0.45s): panels interlock into a color wall; words fly in ──
+  // ── phase 1 (0–0.45s): panels interlock into a color wall ─────────────
   if (heroRoot) tl.to(heroRoot, { opacity: 0.15, duration: 0.35, ease: 'power2.out' }, 0);
   panels.forEach((p, i) => {
     tl.to(p, { x: 0, duration: 0.42, ease: 'power3.inOut' }, i * 0.03);
-  });
-  words.forEach((w, i) => {
-    tl.fromTo(
-      w,
-      {
-        x: (i % 2 === 0 ? -1 : 1) * (W * 0.75),
-        y: (Math.random() - 0.5) * H,
-        opacity: 0,
-        rotate: (i % 2 === 0 ? -1 : 1) * 10,
-      },
-      { x: restSpots[i].x, y: restSpots[i].y, opacity: 1, rotate: 0, duration: 0.5, ease: 'power3.inOut' },
-      0.06 + i * 0.035,
-    );
   });
 
   // ── phase 2 (0.45s): route swap beneath the opaque overlay ───────────
@@ -156,26 +99,10 @@ export function startHeroTransition(opts: StartOpts): void {
     0.46,
   );
 
-  // ── phase 3 (0.5–0.95s): words converge to section titles; panels fold ─
+  // ── phase 3 (0.5–0.95s): panels fold into slim rule strips (category
+  // rules echo) ────────────────────────────────────────────────────────────
   tl.call(
     () => {
-      const targets = cats.map(
-        (c) => document.querySelector<HTMLElement>(`[data-content-page] #${c.id} [data-section-title]`),
-      );
-      words.forEach((w, i) => {
-        const t = targets[i];
-        if (!t) return;
-        const tr = t.getBoundingClientRect();
-        const wr = w.getBoundingClientRect();
-        gsap.to(w, {
-          x: `+=${tr.left - wr.left}`,
-          y: `+=${tr.top - wr.top}`,
-          scale: 0.34, // giant word shrinks to real title scale
-          duration: 0.45,
-          ease: 'power3.inOut',
-        });
-      });
-      // panels collapse into slim horizontal rule strips (category rules echo)
       panels.forEach((p, i) => {
         gsap.to(p, { scaleY: 0.006, y: (i - 2) * 5, opacity: 0.8, duration: 0.45, ease: 'power3.inOut' });
       });
@@ -185,7 +112,6 @@ export function startHeroTransition(opts: StartOpts): void {
   );
 
   // ── phase 4 (0.95–1.35s): reveal the real page ───────────────────────
-  tl.to(words, { opacity: 0, duration: 0.25, stagger: 0.03, ease: 'power1.out' }, 0.95);
   tl.to(panels, { opacity: 0, duration: 0.25, ease: 'power1.out' }, 0.95);
   tl.call(
     () => {

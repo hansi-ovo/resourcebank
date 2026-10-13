@@ -114,10 +114,26 @@ describe('search jobs (01-architecture §3)', () => {
     expect(after).toBe(before); // every mock result URL already exists → nothing inserted
   });
 
-  it('invalid search bodies are 400', async () => {
+  it('invalid search bodies are 400 (bad scope, non-string prompt)', async () => {
     const { app } = makeApp({ seed: true });
     const cookie = await login(app);
-    const res = await request(app).post('/api/search').set('Cookie', cookie).send({ prompt: '' });
-    expect(res.status).toBe(400);
+    const badScope = await request(app)
+      .post('/api/search')
+      .set('Cookie', cookie)
+      .send({ prompt: '', scope: 'not-a-category' });
+    expect(badScope.status).toBe(400);
+    const badPrompt = await request(app).post('/api/search').set('Cookie', cookie).send({ prompt: 123 });
+    expect(badPrompt.status).toBe(400);
+  });
+
+  it('tag-only search: empty prompt with a valid scope is accepted (202)', async () => {
+    const { app } = makeApp({ seed: true, searchDelayMs: 20 });
+    const cookie = await login(app);
+    const res = await request(app)
+      .post('/api/search')
+      .set('Cookie', cookie)
+      .send({ prompt: '', scope: 'fellowships' });
+    expect(res.status).toBe(202);
+    expect(res.body.jobId).toBeGreaterThan(0);
   });
 });

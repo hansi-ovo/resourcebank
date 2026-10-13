@@ -1,7 +1,7 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
-import type { AdminSummary } from '../../shared/types';
+import type { AdminSummary, SearchStats } from '../../shared/types';
 import { authRoutes } from './routes/auth';
 import {
   applyTransition,
@@ -73,6 +73,11 @@ export function createApp(deps: AppDeps): Express {
           | { value: string }
           | undefined
       )?.value ?? null;
+    const lastStatsRow = db
+      .prepare(
+        'SELECT stats FROM searches WHERE finished_at IS NOT NULL AND stats IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT 1',
+      )
+      .get() as { stats: string } | undefined;
     const running = (
       db.prepare('SELECT COUNT(*) AS n FROM searches WHERE finished_at IS NULL').get() as { n: number }
     ).n;
@@ -81,6 +86,7 @@ export function createApp(deps: AppDeps): Express {
       pendingUpdatesCount,
       lastSearchAt,
       searchRunning: running > 0,
+      lastSearchStats: lastStatsRow ? (JSON.parse(lastStatsRow.stats) as SearchStats) : null,
     };
     res.json(summary);
   });

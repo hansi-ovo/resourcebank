@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router';
+import { BrowserRouter, HashRouter, Route, Routes } from 'react-router';
 import './app.css';
 import { ToastProvider } from '@/components/ui/Toast';
 import { AuthProvider } from '@/lib/auth';
@@ -27,6 +27,11 @@ function Loading({ label }: { label: string }) {
     </div>
   );
 }
+
+// file:// opens (single-file export demo) can't use history routing — the
+// pathname is the on-disk file path, so no route would match. Hash routing
+// keeps routing entirely after '#', working both from disk and when hosted.
+const Router = window.location.protocol === 'file:' ? HashRouter : BrowserRouter;
 
 function App() {
   return (
@@ -68,8 +73,8 @@ function App() {
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <BrowserRouter>
+    <Router>
       <App />
-    </BrowserRouter>
+    </Router>
   </StrictMode>,
 );

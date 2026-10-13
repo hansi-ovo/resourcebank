@@ -61,6 +61,10 @@ export function openDb(file: string): Database.Database {
   if (!cols.some((c) => c.name === 'notes')) {
     db.exec("ALTER TABLE entries ADD COLUMN notes TEXT NOT NULL DEFAULT ''");
   }
+  const searchCols = db.prepare('PRAGMA table_info(searches)').all() as Array<{ name: string }>;
+  if (!searchCols.some((c) => c.name === 'stats')) {
+    db.exec('ALTER TABLE searches ADD COLUMN stats TEXT');
+  }
   return db;
 }
 

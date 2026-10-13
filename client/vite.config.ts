@@ -44,10 +44,16 @@ export default defineConfig({
     },
   },
   server: {
-    port: 5173,
+    // RB_CLIENT_PORT lets e2e run its own client (5174) alongside the dev
+    // client (5173) with an isolated API target — tests never touch dev data.
+    port: Number(process.env.RB_CLIENT_PORT || 5173),
+    strictPort: Boolean(process.env.RB_CLIENT_PORT),
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        // RB_API_TARGET lets e2e point its own client instance at an isolated
+        // API server (playwright runs client on 5174 + API on 8790 so tests
+        // never touch the dev/user database). Dev default stays 8787.
+        target: process.env.RB_API_TARGET || 'http://localhost:8787',
         changeOrigin: true,
       },
     },
@@ -56,7 +62,7 @@ export default defineConfig({
     port: 4173,
     proxy: {
       '/api': {
-        target: 'http://localhost:8787',
+        target: process.env.RB_API_TARGET || 'http://localhost:8787',
         changeOrigin: true,
       },
     },

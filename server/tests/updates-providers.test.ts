@@ -11,35 +11,41 @@ afterEach(() => {
   ctx = null;
 });
 
+/** Minimal SearchContext for MockSearchProvider scoring tests. */
+const mockCtx = (existing: Set<string> = new Set()) => ({
+  existingUrls: existing,
+  existingEntries: [],
+});
+
 describe('MockSearchProvider scoring (01-architecture §4)', () => {
   const provider = new MockSearchProvider();
 
   it('dedupes against existing URLs (any status)', async () => {
     const existing = new Set([SEED_ENTRIES[0].url, SEED_ENTRIES[5].url]);
-    const out = await provider.search('leadership', 'all', existing);
+    const out = await provider.search('leadership', 'all', mockCtx(existing));
     expect(out.some((d) => existing.has(d.url))).toBe(false);
   });
 
   it('scope match scores above out-of-scope entries', async () => {
-    const out = await provider.search('leadership programs for students', 'fellowships', new Set());
+    const out = await provider.search('leadership programs for students', 'fellowships', mockCtx());
     // top 8 should lean fellowships heavily (in-scope +20, out-of-scope −20)
     const fellowships = out.slice(0, 8).filter((d) => d.category === 'fellowships');
     expect(fellowships.length).toBeGreaterThanOrEqual(6);
   });
 
   it('keyword hits raise matching entries', async () => {
-    const out = await provider.search('climate youth sustainability training action', 'all', new Set());
+    const out = await provider.search('climate youth sustainability training action', 'all', mockCtx());
     expect(out[0]!.name).toContain('Climate X');
   });
 
   it('returns at most 30 drafts', async () => {
-    const out = await provider.search('program', 'all', new Set());
+    const out = await provider.search('program', 'all', mockCtx());
     expect(out.length).toBeLessThanOrEqual(30);
     expect(out.length).toBeGreaterThan(0);
   });
 
   it('ties break by earlier seed index', async () => {
-    const out = await provider.search('zzz-no-keyword-match', 'all', new Set());
+    const out = await provider.search('zzz-no-keyword-match', 'all', mockCtx());
     // all score 60 (no scope, no hits) → seed order preserved
     expect(out[0]!.name).toBe(SEED_ENTRIES[0].name);
   });

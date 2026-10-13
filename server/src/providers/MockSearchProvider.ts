@@ -1,6 +1,6 @@
 import { SEED_ENTRIES } from '../../../shared/seed-data';
 import type { EntryDraft, Scope } from '../../../shared/types';
-import type { SearchProvider } from './types';
+import type { SearchContext, SearchProvider } from './types';
 
 /**
  * MockSearchProvider (01-architecture.md §4, D10):
@@ -29,7 +29,8 @@ function keywords(prompt: string): string[] {
 }
 
 export class MockSearchProvider implements SearchProvider {
-  async search(prompt: string, scope: Scope, existingUrls: Set<string>): Promise<EntryDraft[]> {
+  async search(prompt: string, scope: Scope, ctx: SearchContext): Promise<EntryDraft[]> {
+    const { existingUrls } = ctx;
     const kw = keywords(prompt);
     const scored = SEED_ENTRIES.map((entry, index) => {
       let score = 60;

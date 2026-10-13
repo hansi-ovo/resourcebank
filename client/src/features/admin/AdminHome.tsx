@@ -12,23 +12,13 @@ import { CATEGORIES, type AdminSummary, type Entry, type Scope } from 'shared/ty
 import { SendIcon, SpinnerIcon, ChevronRightIcon } from './icons';
 
 /**
- * Built-in search prompts per scope (client request #2): selecting a scope
- * alone is enough to search — the built-in prompt rides along, and any
- * user-typed prompt is searched TOGETHER with it.
+ * `/admin` home (03-pages §Admin home). Copy deck verbatim; ⚑ items flagged.
  *
- * Placeholder prompts below (recorded in .omo/questions.md) — awaiting the
- * client's official per-tag wording; swap values only, no logic change.
+ * The client sends only the scope + the raw typed prompt — query planning
+ * (category angles, diversity, include/exclude judgement) lives server-side
+ * in the structured category specs. Tag-only search (empty input) is valid:
+ * the selected scope's spec drives the planner.
  */
-const BUILTIN_PROMPTS: Record<Scope, string> = {
-  all: 'leadership development programs fellowships events conferences training scholarships opportunities',
-  'on-campus': 'campus leadership student employment governance research on-campus opportunities DKU',
-  fellowships: 'leadership fellowships scholarships graduate undergraduate funded programs',
-  experiential: 'experiential learning summer programs internships consulting social impact hands-on',
-  events: 'leadership conferences symposiums summits events international delegates',
-  training: 'leadership training programs workshops executive education skill building',
-};
-
-/** `/admin` home (03-pages §Admin home). Copy deck verbatim; ⚑ items flagged. */
 export function AdminHome() {
   const { signOut } = useAuth();
   const toast = useToast();
@@ -64,16 +54,13 @@ export function AdminHome() {
 
   async function runSearch(e: React.FormEvent) {
     e.preventDefault();
-    // Tag-only search works: the built-in prompt for the selected scope is the
-    // baseline; a user prompt is combined with it (client request #2).
-    const typed = prompt.trim();
-    const builtin = BUILTIN_PROMPTS[scope];
-    const combined = typed ? `${builtin} ${typed}` : builtin;
-    if (searching || combined.trim().length < 2) return;
+    // Scope + raw prompt only; empty input = tag-only search (server plans
+    // from the category spec). The finish toast fires from the global
+    // listener in AdminApp — the runner keeps polling even if the admin
+    // navigates away mid-search.
+    if (searching) return;
     setSearching(true);
-    // The finish toast fires from the global listener in AdminApp — the
-    // runner keeps polling even if the admin navigates away mid-search.
-    await startSearch(combined, scope).catch(() => {
+    await startSearch(prompt.trim(), scope).catch(() => {
       toast.show({ kind: 'error', message: 'Search failed. Try again.' });
     });
     // refresh what this page shows (Last search line, summary, pending)

@@ -112,11 +112,12 @@ export function ReviewLayout() {
                     aria-current={isActive ? 'page' : undefined}
                     className={cn(
                       'flex w-full items-center justify-between px-3 py-2.5 text-[14px] font-semibold transition-colors focus-visible:outline-2',
-                      isActive ? 'text-white' : 'text-ink hover:bg-surface',
+                      isActive ? 'text-ink' : 'text-ink hover:bg-surface',
                     )}
                     style={{
-                      /* active = brand blue, square corners (request 3b) */
-                      background: isActive ? 'var(--brand-blue)' : undefined,
+                      /* active = display-site blue, only faintly distinct from
+                         the background (request 3a rev 6) */
+                      background: isActive ? 'color-mix(in oklab, var(--ramp-mid) 13%, transparent)' : undefined,
                       borderRadius: 0,
                       outlineColor: 'var(--focus)',
                     }}
@@ -127,7 +128,10 @@ export function ReviewLayout() {
                         className="num inline-flex min-w-6 items-center justify-center rounded-full px-1.5 text-[12px] font-bold"
                         style={
                           isActive
-                            ? { background: 'rgba(255,255,255,0.22)', color: 'white' }
+                            ? {
+                                background: 'color-mix(in oklab, var(--ramp-mid) 16%, white)',
+                                color: 'var(--ramp-mid-deep)',
+                              }
                             : {
                                 background: 'color-mix(in oklab, var(--cat-on-campus) 12%, white)',
                                 color: 'var(--cat-on-campus)',

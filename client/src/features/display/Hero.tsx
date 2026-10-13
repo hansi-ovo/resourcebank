@@ -4,8 +4,7 @@ import VariableProximity from '@/components/react-bits/VariableProximity';
 import CursorGrid from '@/components/react-bits/CursorGrid';
 import { Logo } from '@/components/ui/Logo';
 import { useReducedMotion } from '@/lib/motion';
-import { CATEGORIES } from 'shared/types';
-import { FallingWords } from './FallingWords';
+import { ShowcaseWheel } from './ShowcaseWheel';
 import './hero.css';
 
 /** First published seed entry name per category — showcase items (⚑ client re-picks). */
@@ -25,38 +24,36 @@ const KEYWORD_TINTS: Array<{ word: string; tint: string }> = [
 ];
 
 /**
- * Falling word list (request 1.4): rendered as three tidy rows at the very
- * top, then dropped with physics (messy, scaled, draggable, bottom pile).
- */
-const FALLING_WORDS = [
-  'leadership', 'fellowships', 'scholarships', 'experiences', 'opportunities',
-  'campus', 'conference', 'symposium', 'training', 'mentorship', 'research',
-  'community', 'global', 'programs', 'summit', 'exchange', 'discovery',
-  'internships', 'governance', 'consulting', 'sustainability', 'networking',
-];
-
-/**
- * Display hero `/` — client revision 2.
- * Load order (1.5): falling words drop FIRST and immediately; once they pass
- * ~2/3 of the viewport the title → subtitle → description reveal runs.
+ * Display hero `/` (rev 13: background word bed removed) — the reveal
+ * sequence starts after a short settle delay on load: blur title →
+ * subtitle → description → CTA, wheel fades in alongside.
  */
 export function Hero({ onStarted }: { onStarted: () => void }) {
   const reduced = useReducedMotion();
   const leftRef = useRef<HTMLDivElement>(null);
-  const [wordsDropped, setWordsDropped] = useState(false);
+  // rev 9: the falling-words drop is gone — the reveal sequence now starts
+  // after a short settle delay on load (was: gated on the words passing 2/3)
+  const [revealStarted, setRevealStarted] = useState(false);
   const [titleSettled, setTitleSettled] = useState(false);
 
   useEffect(() => {
     if (reduced) {
-      setWordsDropped(true);
+      setRevealStarted(true);
       setTitleSettled(true);
     }
   }, [reduced]);
 
+  useEffect(() => {
+    if (reduced) return;
+    const id = window.setTimeout(() => setRevealStarted(true), 400);
+    return () => window.clearTimeout(id);
+  }, [reduced]);
+
   return (
     <div className="hero-root" data-hero-root>
-      {/* mouse-follow grid (request 4c: base grid brightness +30% again,
-          cursor-proximity boost even stronger — react-bits Cursor Grid look) */}
+      {/* mouse-follow grid (request 4c rev 5: base grid brightness +30%
+          again (0.08 → 0.104); cursor-proximity peak boosted further on top
+          of that base (0.94 → 1) — react-bits Cursor Grid look) */}
       {!reduced ? (
         <CursorGrid
           className="hero-cursor-grid"
@@ -64,10 +61,10 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
           color="#336472"
           radius={180}
           falloff="smooth"
-          maxOpacity={0.94}
+          maxOpacity={1}
           lineWidth={1.2}
           fillOpacity={0.1}
-          gridOpacity={0.08}
+          gridOpacity={0.104}
           clickPulse={false}
         />
       ) : null}
@@ -83,10 +80,11 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
               <span className="hero-title-static">DKU Leadership Resource Bank</span>
             ) : (
               <>
-                {/* title waits until the falling words pass the 2/3 mark
-                    (request 1.5: words drop first, then title → subtitle →
-                    description → CTA) */}
-                {wordsDropped ? (
+                {/* title reveals after the short settle delay (rev 9: no
+                    word-drop gate anymore). The blur stage is
+                    position:absolute so the hidden spacer can't push the
+                    real title down. */}
+                {revealStarted ? (
                   <span
                     className="hero-title-blur-stage"
                     style={{ visibility: titleSettled ? 'hidden' : 'visible' }}
@@ -100,9 +98,11 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
                     />
                   </span>
                 ) : null}
+                {/* vp stage keeps occupying layout the whole time (visibility,
+                    not display) so the h1 never resizes at the settle moment */}
                 <span
                   className="hero-title-vp-stage"
-                  style={{ display: titleSettled ? 'block' : 'none' }}
+                  style={{ visibility: titleSettled ? 'visible' : 'hidden' }}
                   aria-hidden={!titleSettled}
                 >
                   <VariableProximity
@@ -135,18 +135,13 @@ export function Hero({ onStarted }: { onStarted: () => void }) {
           </div>
         </div>
 
-        <ShowcaseStrip reduced={reduced} />
+        {/* rev 8 (request 2): the whole wheel fades in like the left copy
+            once the reveal sequence starts; images entering the path
+            afterwards appear at full opacity (no per-image fade) */}
+        <div className={`showcase-wheel-fade ${titleSettled ? 'is-on' : ''}`}>
+          <ShowcaseWheel reduced={reduced} />
+        </div>
       </main>
-
-      {/* falling words (request 1.4/1.5): drop first; the copy reveal is gated
-          on their descent past the 2/3 mark (~1.1s) */}
-      {!reduced ? (
-        <FallingWords
-          className="hero-fall-bed"
-          words={FALLING_WORDS}
-          onDropped={() => setWordsDropped(true)}
-        />
-      ) : null}
     </div>
   );
 }
@@ -157,96 +152,5 @@ function TintedWord({ word }: { word: string }) {
     <span className="hero-keyword" style={{ color: tint }}>
       {word}
     </span>
-  );
-}
-
-/**
- * Showcase strip (D20 + request 1): fast drift, strong docked emphasis.
- */
-function ShowcaseStrip({ reduced }: { reduced: boolean }) {
-  const listRef = useRef<HTMLDivElement>(null);
-  const [paused, setPaused] = useState(false);
-  const offsetRef = useRef(0);
-  const itemHeight = 96;
-  const viewportH = 384;
-
-  useEffect(() => {
-    if (reduced || paused) return;
-    const el = listRef.current;
-    if (!el) return;
-    let raf = 0;
-    let last = performance.now();
-    let activeRow = -1;
-
-    const DRIFT_PX_PER_S = 18;
-    const total = CATEGORIES.length * itemHeight;
-
-    const tick = (now: number) => {
-      const dt = (now - last) / 1000;
-      last = now;
-      offsetRef.current = (offsetRef.current + DRIFT_PX_PER_S * dt) % total;
-      const y = offsetRef.current;
-      el.style.transform = `translate3d(0, ${-(total + y)}px, 0)`;
-
-      const zoneCenter = (total * 1 + y + viewportH / 2) / itemHeight;
-      const row = Math.floor(zoneCenter);
-      if (row !== activeRow) {
-        activeRow = row;
-        const rows = el.children;
-        for (let i = 0; i < rows.length; i++) {
-          (rows[i] as HTMLElement).classList.toggle('is-docked', i === row);
-        }
-      }
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [reduced, paused]);
-
-  const rows = [...CATEGORIES, ...CATEGORIES, ...CATEGORIES];
-
-  return (
-    <aside
-      className="showcase"
-      aria-label="Program categories"
-      onMouseEnter={() => setPaused(true)}
-      onMouseLeave={() => setPaused(false)}
-      onFocus={() => setPaused(true)}
-      onBlur={() => setPaused(false)}
-    >
-      {/* mobile static pills */}
-      <div className="showcase-mobile">
-        {CATEGORIES.map((c) => (
-          <span
-            key={c.id}
-            className="showcase-pill"
-            data-cat={c.id}
-            style={{ ['--cat' as string]: c.tint }}
-          >
-            {c.label}
-          </span>
-        ))}
-      </div>
-
-      {/* desktop ladder */}
-      <div className="showcase-viewport" aria-hidden="true">
-        <div className="showcase-list" ref={listRef}>
-          {rows.map((c, i) => (
-            <div
-              key={`${c.id}-${i}`}
-              className="showcase-item"
-              data-cat={c.id}
-              style={{ ['--cat' as string]: c.tint }}
-            >
-              <span className="showcase-label" data-showcase-label data-cat={c.id}>
-                {c.label}
-              </span>
-              <span className="showcase-rule" />
-              <span className="showcase-item-name">{SHOWCASE_ITEMS[c.id]}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </aside>
   );
 }

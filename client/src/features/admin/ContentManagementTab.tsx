@@ -17,7 +17,7 @@ function useHiddenIds(): Set<number> {
   );
 }
 
-type EditableField = 'name' | 'summary' | 'url' | 'audience' | 'notes' | 'imageUrl';
+type EditableField = 'name' | 'summary' | 'url' | 'audience' | 'notes' | 'imageUrl' | 'timeline';
 
 /**
  * Content management tab — client revision 3 layout (same full-info table as
@@ -81,7 +81,10 @@ export function ContentManagementTab() {
   const visible = searched === null ? null : searched.filter((r) => !hidden.has(r.id));
 
   return (
-    <section aria-label="Content management">
+    <section
+      aria-label="Content management"
+      className="flex h-[calc(100vh-56px-48px)] min-h-[320px] flex-col"
+    >
       {/* sticky search (request 3d) */}
       <div className="sticky z-20 -mx-1 mb-3 bg-canvas px-1 pb-2 pt-3" style={{ top: 56 }}>
         <div className="flex items-center gap-3">
@@ -109,26 +112,26 @@ export function ContentManagementTab() {
             : 'No published programs yet. Approve items from the Review list.' /* copy deck */}
         </p>
       ) : (
-        <div className="rounded-xl border border-mist bg-surface">
+        <div className="review-table-scroll min-h-[200px] flex-1 rounded-xl border border-mist bg-surface">
           <table className="w-full min-w-[1460px] border-collapse text-left">
             <thead>
               <tr className="text-[13px] font-semibold text-ink-soft">
                 {[
                   'Program',
                   'Category',
-                  'Dates',
-                  'Website',
-                  'Audience',
-                  'Summary',
-                  'Notes',
+                  'Application Timeline',
+                  'Web Link',
+                  'Eligibility',
+                  'Overview',
                   'Image URL',
+                  'Notes',
                   'Withdraw',
                 ].map((h) => (
                   <th
                     key={h}
                     scope="col"
                     className="sticky z-10 border-b border-mist bg-surface px-3 py-3"
-                    style={{ top: 124 }}
+                    style={{ top: 0 }}
                   >
                     {h}
                   </th>
@@ -165,11 +168,32 @@ export function ContentManagementTab() {
                     </div>
                   </td>
 
-                  <td className="min-w-[130px] px-3 py-2">
-                    <span className="num block whitespace-normal text-[13px] text-ink-soft">
-                      {formatDateRange(e.startsAt, e.endsAt) || (e.timeline ?? '').replace(/\n/g, ' ') || '\u00A0'}
-                    </span>
-                  </td>
+                  {editing?.id === e.id && editing.field === 'timeline' ? (
+                    <td className="min-w-[130px] p-2">
+                      <InlineInput
+                        initial={e.timeline}
+                        multiline
+                        ariaLabel="Edit application timeline"
+                        onSave={(v) => {
+                          setEditing(null);
+                          if (v !== e.timeline) void patch(e.id, { timeline: v });
+                        }}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </td>
+                  ) : (
+                    <EditableCell
+                      label="application timeline"
+                      className="min-w-[130px]"
+                      onEdit={() => setEditing({ id: e.id, field: 'timeline' })}
+                    >
+                      <span className="num block whitespace-pre-wrap text-[13px] text-ink-soft">
+                        {formatDateRange(e.startsAt, e.endsAt) ||
+                          e.timeline.replace(/\n/g, ' ') ||
+                          '\u00A0'}
+                      </span>
+                    </EditableCell>
+                  )}
 
                   {editing?.id === e.id && editing.field === 'url' ? (
                     <td className="min-w-[120px] p-2">
@@ -237,6 +261,26 @@ export function ContentManagementTab() {
                     </EditableCell>
                   )}
 
+                  {editing?.id === e.id && editing.field === 'imageUrl' ? (
+                    <td className="min-w-[140px] p-2">
+                      <InlineInput
+                        initial={e.imageUrl ?? ''}
+                        ariaLabel="Edit image URL"
+                        onSave={(v) => {
+                          setEditing(null);
+                          void patch(e.id, { imageUrl: v }); // '' clears
+                        }}
+                        onCancel={() => setEditing(null)}
+                      />
+                    </td>
+                  ) : (
+                    <EditableCell label="image URL" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'imageUrl' })}>
+                      <span className="block max-w-[30ch] break-all text-[13px] leading-snug text-ink-soft" title={e.imageUrl ?? ''}>
+                        {e.imageUrl || <span className="opacity-50">—</span>}
+                      </span>
+                    </EditableCell>
+                  )}
+
                   {editing?.id === e.id && editing.field === 'notes' ? (
                     <td className="min-w-[140px] p-2">
                       <InlineInput
@@ -254,26 +298,6 @@ export function ContentManagementTab() {
                     <EditableCell label="notes" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'notes' })}>
                       <span className="block max-w-[30ch] whitespace-pre-wrap text-[13px] leading-snug text-ink-soft">
                         {e.notes || <span className="opacity-50">—</span>}
-                      </span>
-                    </EditableCell>
-                  )}
-
-                  {editing?.id === e.id && editing.field === 'imageUrl' ? (
-                    <td className="min-w-[140px] p-2">
-                      <InlineInput
-                        initial={e.imageUrl ?? ''}
-                        ariaLabel="Edit image URL"
-                        onSave={(v) => {
-                          setEditing(null);
-                          void patch(e.id, { imageUrl: v }); // '' clears
-                        }}
-                        onCancel={() => setEditing(null)}
-                      />
-                    </td>
-                  ) : (
-                    <EditableCell label="image URL" className="min-w-[140px]" onEdit={() => setEditing({ id: e.id, field: 'imageUrl' })}>
-                      <span className="block max-w-[30ch] break-all text-[13px] leading-snug text-ink-soft" title={e.imageUrl ?? ''}>
-                        {e.imageUrl || <span className="opacity-50">—</span>}
                       </span>
                     </EditableCell>
                   )}

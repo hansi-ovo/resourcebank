@@ -13,8 +13,17 @@ export function AdminApp() {
   useEffect(() => {
     // global search-finish toast (fires wherever the admin is in the app)
     const off = onSearchFinished((e) => {
-      if (e.added < 0) toast.show({ kind: 'error', message: 'Search failed. Try again.' });
-      else toast.show({ kind: 'info', message: `Search finished: ${e.added} items added to review` }); // ⚑ copy
+      if (e.added < 0) {
+        toast.show({ kind: 'error', message: 'Search failed. Try again.' });
+        return;
+      }
+      let message = `Search finished: ${e.added} items added to review`; // ⚑ copy
+      // Saturation report — when nothing came back, say WHY (e2e matches the
+      // base sentence, so the detail is appended, never replaces it).
+      if (e.stats && e.added === 0 && e.stats.dedupSkipped + e.stats.lowQuality > 0) {
+        message += ` — ${e.stats.dedupSkipped} already known, ${e.stats.lowQuality} below quality bar`;
+      }
+      toast.show({ kind: 'info', message });
     });
     // re-attach to a server-side running search if this page (re)loaded mid-job
     let offFollow: (() => void) | undefined;

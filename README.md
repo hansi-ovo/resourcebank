@@ -4,11 +4,37 @@ A two-face web application for Duke Kunshan University Leadership Programs:
 
 - **Display app** (`/`): animated English portal — hero page with a clone-flight
   transition into a fully scrollable resource catalog with live updates (SSE).
-- **Admin app** (`/admin`): AI-assisted search (mocked behind a provider
-  interface), review workflow (approve/remove/edit), weekly update checking,
-  and content management synced live to the display site.
+- **Admin app** (`/admin`): real web search (Tavily + campus LLM gateway behind
+  a provider interface; mock fallback when unconfigured), review workflow
+  (approve/remove/edit), weekly update checking, and content management synced
+  live to the display site.
 
 English only. Light theme. Logo top-left everywhere.
+
+## Deployer quick start (university IT)
+
+One-time setup — see the full **Deployment runbook** below for details:
+
+```bash
+git clone <repo-url> /opt/resourcebank && cd /opt/resourcebank
+npm install && npm run build          # Node 20 required
+cp deploy/.env.example .env           # then set ADMIN_PASSWORD, SESSION_SECRET
+                                      # (LLM_API_KEY / TAVILY_API_KEY: apply for your own keys)
+# systemd + nginx + backup: follow "Deployment runbook" steps 4-6
+```
+
+To pull updates later (deployed copy is a plain git clone):
+
+```bash
+cd /opt/resourcebank
+git pull
+npm install && npm run build
+sudo systemctl restart rb             # service name per deploy/rb.service
+curl http://localhost:<port>/api/health   # expect {"ok":true}
+```
+
+Content lives in SQLite (`server/data/rb.sqlite` outside the repo) —
+`git pull` never touches published content.
 
 ## Stack
 
@@ -34,13 +60,36 @@ published, odd indices are in review.
 Useful scripts:
 
 ```bash
-npm run test -w server          # Vitest (31 tests: state machine, dedupe, scoring, auth, SSE)
-npx playwright test             # E2E (26 tests; auto-resets dev DB, FAST_MODE=300ms)
+npm run test -w server          # Vitest (63 tests: state machine, dedupe, scoring, auth, SSE, LLM JSON, search pipeline)
+npx playwright test             # E2E (28 tests; auto-resets dev DB, FAST_MODE=300ms, SEARCH_SOURCE pinned off)
 npm run build                   # typecheck + build server (esbuild ESM) + client (Vite)
 node scripts/acceptance.mjs     # API lifecycle walk (login → search → edit → approve → withdraw → SSE)
+node scripts/llm-smoke.mjs      # LLM gateway smoke test (lists models, one chat call)
+node scripts/pipeline-rehearsal.mjs  # full search pipeline rehearsal (mock Tavily + real LLM)
+node scripts/search-report.mjs [scope] ["prompt"]  # one real search round → funnel stats + draft quality report
 node scripts/contrast-audit.mjs # WCAG token contrast checks
 node scripts/lighthouse.mjs     # a11y/perf (LH_BASE env selects origin)
 ```
+
+### Real web search (admin app)
+
+The search pipeline is real by default when configured — Tavily finds candidate
+pages, the DKU NewAPI gateway (OpenAI-compatible) plans queries, judges
+duplicates, extracts structured drafts, and scores quality (floor 70). Fill in
+`.env` (see `deploy/.env.example`):
+
+```
+LLM_API_KEY=...            # gateway key (campus VPN required in dev)
+LLM_MODEL=gemini-3.5-flash # exact name from the gateway model list
+SEARCH_SOURCE=tavily
+TAVILY_API_KEY=tvly-...    # free tier: 1000 searches/month
+```
+
+Unconfigured (`SEARCH_SOURCE` unset) everything falls back to the offline
+`MockSearchProvider` — tests and demos never touch the network. Duplicate
+handling: exact-page dedup via URL normalization, plus an LLM entity check —
+a newer edition of a known program (…/2027 of …/2026) routes to **Check
+updates** as a pending url-diff instead of polluting the review list.
 
 ## Production build
 

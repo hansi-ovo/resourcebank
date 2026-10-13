@@ -14,3 +14,13 @@ test-results/
 Thumbs.db
 
 shared/*.js
+
+# AI session artifacts / QA screenshots (not part of the deliverable)
+.omo/
+# Build artifacts
+client/dist-export/
+*.tsbuildinfo
+# Demo export output (regenerate with: npm run export:demo)
+DKU-ResourceBank-Demo.html
+# Personal notes
+调试.md

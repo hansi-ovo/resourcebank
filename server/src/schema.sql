@@ -39,7 +39,8 @@ CREATE TABLE IF NOT EXISTS searches (
   scope         TEXT NOT NULL,           -- 'all' | category id
   started_at    TEXT NOT NULL,
   finished_at   TEXT,
-  result_count  INTEGER
+  result_count  INTEGER,
+  stats         TEXT                     -- JSON SearchStats funnel (saturation report)
 );
 
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);

@@ -1,14 +1,18 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import type Database from 'better-sqlite3';
-import { CATEGORY_IDS, type EntryDraft, type SearchJob } from '../../../shared/types';
+import { CATEGORY_IDS, type EntryDraft, type Scope, type SearchJob, type SearchStats } from '../../../shared/types';
 import type { Bus } from '../bus';
-import type { SearchProvider } from '../providers/types';
+import type { ExistingEntryRef, SearchContext, SearchProvider } from '../providers/types';
+import { insertPendingUpdates } from './updates';
+import { config } from '../config';
 import { placeholderFor } from '../seedimg';
 import { toEntry, type Row } from '../db';
 
 const searchSchema = z.object({
-  prompt: z.string().trim().min(2).max(500),
+  // Empty prompt = tag-only search: the scope's category spec drives query
+  // planning server-side (the client no longer concatenates keyword soup).
+  prompt: z.string().trim().max(500).default(''),
   scope: z.enum(['all', ...CATEGORY_IDS]).default('all'),
 });
 
@@ -34,51 +38,106 @@ export function searchRoutes(deps: SearchDeps): Router {
      VALUES (@name, @summary, @url, @audience, @startsAt, @endsAt, @timeline, @category, @imageUrl, @quality, 'review', 'search', @now, @now)`,
   );
 
-  function runJob(jobId: number, prompt: string, scope: 'all' | (typeof CATEGORY_IDS)[number]): void {
+  /**
+   * Same program found on a newer page (e.g. .../2027): published entries
+   * get a pending url-diff → Check updates tab. Review-stage entries are
+   * skipped (the draft under review still covers them).
+   */
+  function routeEditionUpdate(existing: ExistingEntryRef, candidate: { name: string; url: string }): void {
+    if (existing.status !== 'published') return;
+    const dupe = db
+      .prepare("SELECT 1 FROM pending_updates WHERE entry_id = ? AND status = 'pending' AND diff LIKE ? LIMIT 1")
+      .get(existing.id, `%${candidate.url}%`);
+    if (dupe) return;
+    insertPendingUpdates(db, bus, [
+      {
+        entryId: existing.id,
+        diff: [
+          {
+            field: 'url',
+            from: existing.url,
+            to: candidate.url,
+            note: `Search found a newer page for this program: ${candidate.name}`,
+          },
+        ],
+      },
+    ]);
+  }
+
+  function runJob(jobId: number, prompt: string, scope: Scope): void {
     setTimeout(() => {
+      let stats: SearchStats | undefined;
       try {
-        const existing = new Set(
-          (db.prepare('SELECT url FROM entries').all() as { url: string }[]).map((r) => r.url),
-        );
-        void provider.search(prompt, scope, existing).then((drafts: EntryDraft[]) => {
-          try {
-            const now = new Date().toISOString();
-            const tx = db.transaction(() => {
-              for (const d of drafts) {
-                insertDraft.run({
-                  name: d.name,
-                  summary: d.summary,
-                  url: d.url,
-                  audience: JSON.stringify(d.audience),
-                  startsAt: d.startsAt,
-                  endsAt: d.endsAt,
-                  timeline: d.timeline ?? '',
-                  category: d.category,
-                  imageUrl: placeholderFor(d.imageUrl, d.category),
-                  quality: d.quality,
+        const rows = db
+          .prepare('SELECT id, name, url, summary, category, status FROM entries')
+          .all() as ExistingEntryRef[];
+        const ctx: SearchContext = {
+          existingUrls: new Set(rows.map((r) => r.url)),
+          existingEntries: rows,
+          onSameProgramEdition: (candidate, existing) => routeEditionUpdate(existing, candidate),
+          onStats: (s) => {
+            stats = s;
+          },
+        };
+        void provider
+          .search(prompt, scope, ctx)
+          .then((drafts: EntryDraft[]) => {
+            try {
+              const now = new Date().toISOString();
+              const tx = db.transaction(() => {
+                for (const d of drafts) {
+                  insertDraft.run({
+                    name: d.name,
+                    summary: d.summary,
+                    url: d.url,
+                    audience: JSON.stringify(d.audience),
+                    startsAt: d.startsAt,
+                    endsAt: d.endsAt,
+                    timeline: d.timeline ?? '',
+                    category: d.category,
+                    imageUrl: placeholderFor(d.imageUrl, d.category),
+                    quality: d.quality,
+                    now,
+                  });
+                }
+                db.prepare('UPDATE searches SET finished_at = ?, result_count = ?, stats = ? WHERE id = ?').run(
                   now,
-                });
-              }
-              db.prepare('UPDATE searches SET finished_at = ?, result_count = ? WHERE id = ?').run(
-                now,
-                drafts.length,
+                  drafts.length,
+                  stats ? JSON.stringify(stats) : null,
+                  jobId,
+                );
+                db.prepare(
+                  "INSERT INTO settings (key, value) VALUES ('last_search_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                ).run(now);
+              });
+              tx();
+              bus.emitEntriesChanged();
+              console.log(`[search] job ${jobId} finished: ${drafts.length} drafts -> review`);
+            } catch (err) {
+              console.error('[search] job insert failed', err);
+              db.prepare('UPDATE searches SET finished_at = ? WHERE id = ?').run(
+                new Date().toISOString(),
                 jobId,
               );
-              db.prepare(
-                "INSERT INTO settings (key, value) VALUES ('last_search_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
-              ).run(now);
-            });
-            tx();
-            bus.emitEntriesChanged();
-            console.log(`[search] job ${jobId} finished: ${drafts.length} drafts -> review`);
-          } catch (err) {
-            console.error('[search] job insert failed', err);
-            db.prepare('UPDATE searches SET finished_at = ? WHERE id = ?').run(
+            }
+          })
+          .catch((err: unknown) => {
+            console.error('[search] job failed', err);
+            const s: SearchStats = stats ?? {
+              candidatesFound: 0,
+              dedupSkipped: 0,
+              sameProgramEditions: 0,
+              extractionFailed: 0,
+              lowQuality: 0,
+              returned: 0,
+            };
+            s.error = err instanceof Error ? err.message : String(err);
+            db.prepare('UPDATE searches SET finished_at = ?, result_count = 0, stats = ? WHERE id = ?').run(
               new Date().toISOString(),
+              JSON.stringify(s),
               jobId,
             );
-          }
-        });
+          });
       } catch (err) {
         console.error('[search] job failed', err);
       }
@@ -102,9 +161,13 @@ export function searchRoutes(deps: SearchDeps): Router {
   return router;
 }
 
-/** Boot sweep: any unfinished job older than 90s is closed as finished(0). */
-export function sweepStaleJobs(db: Database.Database): void {
-  const cutoff = Date.now() - 90_000;
+/**
+ * Boot sweep: any unfinished job older than `timeoutMs` is closed as
+ * finished(0). Real pipelines (Tavily + LLM extraction) take minutes, so the
+ * timeout is config-driven — 90s would kill live jobs mid-flight.
+ */
+export function sweepStaleJobs(db: Database.Database, timeoutMs: number = config.searchJobTimeoutMs): void {
+  const cutoff = Date.now() - timeoutMs;
   const rows = db.prepare('SELECT id, started_at FROM searches WHERE finished_at IS NULL').all() as {
     id: number;
     started_at: string;

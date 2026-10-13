@@ -107,12 +107,35 @@ export interface SearchJob {
   status: SearchJobStatus;
 }
 
+/**
+ * Per-round search funnel counters — the saturation report. Written as JSON
+ * on the searches row; surfaced in /api/summary so the admin can see WHY a
+ * round returned few or zero drafts (already known / below quality bar).
+ */
+export interface SearchStats {
+  /** raw hits returned by the search source */
+  candidatesFound: number;
+  /** dropped: URL (or entity) already present in the DB */
+  dedupSkipped: number;
+  /** same program, newer edition page — routed to Check updates instead */
+  sameProgramEditions: number;
+  /** page fetch or LLM extraction failed for this many candidates */
+  extractionFailed: number;
+  /** extracted but scored below SEARCH_QUALITY_FLOOR */
+  lowQuality: number;
+  /** drafts actually handed to the review list */
+  returned: number;
+  /** set when the whole round failed */
+  error?: string;
+}
+
 /** GET /api/summary payload. */
 export interface AdminSummary {
   reviewCount: number;
   pendingUpdatesCount: number;
   lastSearchAt: string | null;
   searchRunning: boolean;
+  lastSearchStats: SearchStats | null;
 }
 
 /** GET /api/published payload — grouped by canonical order. */

@@ -175,3 +175,39 @@ tr:hover .sticky-col,
 tr.group\/row:hover .sticky-col {
   background: var(--canvas);
 }
+
+/* admin list horizontal+vertical scroll container (request 3b rev 6): the
+   global scrollbar is hidden, so the table wrapper restores a visible slim
+   bar. The wrapper is the scroll context, so sticky table headers anchor to
+   IT (top: 0) instead of the viewport — and the horizontal scrollbar sits at
+   the wrapper's bottom edge, reachable without scrolling the list to the end. */
+.review-table-scroll {
+  overflow: auto;
+  /* flex/grid children need this to shrink below content size so
+     overflow scrolling engages instead of stretching the page */
+  min-height: 0;
+}
+
+.review-table-scroll::-webkit-scrollbar {
+  width: 0;
+  height: 10px;
+}
+
+.review-table-scroll::-webkit-scrollbar-track {
+  background: color-mix(in oklab, var(--ink) 5%, transparent);
+  border-radius: 999px;
+}
+
+.review-table-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklab, var(--ink) 24%, transparent);
+  border-radius: 999px;
+}
+
+.review-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklab, var(--ink) 38%, transparent);
+}
+
+.review-table-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklab, var(--ink) 24%, transparent) transparent;
+}

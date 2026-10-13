@@ -1,6 +1,9 @@
 /**
  * Phase 1 acceptance: full API lifecycle walk against a FAST_MODE dev server.
  * Node 20+ has global fetch. Run: node scripts/acceptance.mjs
+ *
+ * NOTE: with SEARCH_SOURCE set to a real source in .env, step 3 runs a REAL
+ * web search (slow + quota). Pin SEARCH_SOURCE=off for a mock acceptance run.
  */
 const base = process.env.BASE ?? 'http://localhost:8787';
 let pass = 0;
