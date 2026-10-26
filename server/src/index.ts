@@ -7,6 +7,7 @@ import { createBus } from './bus';
 import { config, searchSourceReady } from './config';
 import { MockSearchProvider } from './providers/MockSearchProvider';
 import { MockUpdateChecker } from './providers/MockUpdateChecker';
+import { RealUpdateChecker } from './providers/RealUpdateChecker';
 import { WebSearchProvider } from './providers/WebSearchProvider';
 import { createSearchSource } from './providers/search-source';
 import { makeLlm } from './providers/llm';
@@ -50,21 +51,30 @@ function main(): void {
       ? new WebSearchProvider(llm, createSearchSource(), { qualityFloor: config.searchQualityFloor })
       : new MockSearchProvider();
 
+  // Same gate as search: the real update checker needs the LLM gateway.
+  // UPDATE_CHECKER=off pins the mock (playwright parity with SEARCH_SOURCE).
+  // The demo action only fires on MockUpdateChecker (injectDemo seam); with
+  // the real checker it returns inserted:0.
+  const checker =
+    llm && liveSearch && process.env.UPDATE_CHECKER !== 'off'
+      ? new RealUpdateChecker(llm)
+      : new MockUpdateChecker();
+
   const app = createApp({
     db,
     bus,
     auth: { adminPassword: config.adminPassword, sessionSecret: config.sessionSecret },
     provider,
-    checker: new MockUpdateChecker(),
+    checker,
     searchDelayMs: liveSearch ? 500 : config.searchDelayMs,
   });
 
   // Monday 09:00 Asia/Shanghai update check (D11).
-  startScheduler(() => runScheduledCheck({ db, bus, checker: new MockUpdateChecker() }));
+  startScheduler(() => runScheduledCheck({ db, bus, checker }));
 
   app.listen(config.port, () => {
     console.log(
-      `[server] listening on :${config.port} (db=${dbPath}, provider=${provider.constructor.name}, searchDelayMs=${
+      `[server] listening on :${config.port} (db=${dbPath}, provider=${provider.constructor.name}, checker=${checker.constructor.name}, searchDelayMs=${
         liveSearch ? 500 : config.searchDelayMs
       })`,
     );
