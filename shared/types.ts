@@ -125,6 +125,8 @@ export interface SearchStats {
   lowQuality: number;
   /** drafts actually handed to the review list */
   returned: number;
+  /** the web queries this round actually ran (dedup diagnostics) */
+  queries: string[];
   /** set when the whole round failed */
   error?: string;
 }

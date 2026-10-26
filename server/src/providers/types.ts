@@ -28,6 +28,12 @@ export interface SearchContext {
   existingUrls: Set<string>;
   existingEntries: ExistingEntryRef[];
   /**
+   * Queries used by the last few search rounds (most recent first, deduped).
+   * The query planner avoids repeating these so consecutive rounds with the
+   * same prompt don't re-find the same URLs.
+   */
+  recentQueries: string[];
+  /**
    * The candidate is the SAME program as `existing`, on a newer page
    * (e.g. .../2027 instead of .../2026). The route layer decides what to do
    * (published entries get a pending url-diff → Check updates tab).

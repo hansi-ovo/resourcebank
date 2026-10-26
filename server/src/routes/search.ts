@@ -71,9 +71,26 @@ export function searchRoutes(deps: SearchDeps): Router {
         const rows = db
           .prepare('SELECT id, name, url, summary, category, status FROM entries')
           .all() as ExistingEntryRef[];
+        // Queries from the last 3 rounds (most recent first) — the planner
+        // avoids repeating them so consecutive same-prompt rounds diversify.
+        const recent = db
+          .prepare(
+            "SELECT stats FROM searches WHERE finished_at IS NOT NULL AND stats IS NOT NULL ORDER BY started_at DESC, id DESC LIMIT 3",
+          )
+          .all() as { stats: string }[];
+        const recentQueries: string[] = [];
+        for (const r of recent) {
+          try {
+            const s = JSON.parse(r.stats) as Partial<SearchStats>;
+            if (Array.isArray(s.queries)) recentQueries.push(...s.queries);
+          } catch {
+            /* unreadable stats row — skip it */
+          }
+        }
         const ctx: SearchContext = {
           existingUrls: new Set(rows.map((r) => r.url)),
           existingEntries: rows,
+          recentQueries: [...new Set(recentQueries)],
           onSameProgramEdition: (candidate, existing) => routeEditionUpdate(existing, candidate),
           onStats: (s) => {
             stats = s;
@@ -130,6 +147,7 @@ export function searchRoutes(deps: SearchDeps): Router {
               extractionFailed: 0,
               lowQuality: 0,
               returned: 0,
+              queries: [],
             };
             s.error = err instanceof Error ? err.message : String(err);
             db.prepare('UPDATE searches SET finished_at = ?, result_count = 0, stats = ? WHERE id = ?').run(
