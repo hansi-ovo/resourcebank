@@ -35,12 +35,25 @@ export const PLACEHOLDERS: Record<string, string> = {
   'training.svg': tile('training', 'Training Programs'),
 };
 
+/**
+ * Maps an entry draft's imageUrl onto the servable form:
+ * - `/seed/<file>.svg` (seed data) → the category-keyed `/api/seedimg/...` route.
+ * - null/absent (every search-extracted draft) → the category's placeholder
+ *   art, so no entry ever reaches the DB imageless.
+ * - external http(s) URLs pass through unchanged.
+ * Unknown category strings fall back to the generic events art (better than
+ * dropping the image entirely; categories are validated upstream anyway).
+ */
 export function placeholderFor(seedUrl: string | null, category: string): string | null {
-  // map seed-data imageUrl to the server route form
-  if (!seedUrl) return null;
-  const m = /\/seed\/([a-z-]+\.svg)$/.exec(seedUrl);
-  if (!m) return null;
-  return `/api/seedimg/${category}/${m[1]}`;
+  if (seedUrl) {
+    const external = /^https?:\/\//i.test(seedUrl);
+    if (external) return seedUrl;
+    const m = /\/seed\/([a-z-]+\.svg)$/.exec(seedUrl);
+    if (m) return `/api/seedimg/${category}/${m[1]}`;
+  }
+  // null or unparseable — fall back to the category's placeholder art.
+  const cat = (category in C ? category : 'events') as keyof typeof C;
+  return `/api/seedimg/${cat}/${cat}.svg`;
 }
 
 export function placeholderBody(cat: string, file: string): { body: string; type: string } | null {
