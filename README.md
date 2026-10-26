@@ -75,7 +75,7 @@ node scripts/lighthouse.mjs     # a11y/perf (LH_BASE env selects origin)
 
 The search pipeline is real by default when configured — Tavily finds candidate
 pages, the DKU NewAPI gateway (OpenAI-compatible) plans queries, judges
-duplicates, extracts structured drafts, and scores quality (floor 70). Fill in
+duplicates, extracts structured drafts, and scores quality (floor 60). Fill in
 `.env` (see `deploy/.env.example`):
 
 ```
@@ -90,6 +90,18 @@ Unconfigured (`SEARCH_SOURCE` unset) everything falls back to the offline
 handling: exact-page dedup via URL normalization, plus an LLM entity check —
 a newer edition of a known program (…/2027 of …/2026) routes to **Check
 updates** as a pending url-diff instead of polluting the review list.
+
+### Weekly update check (real checker)
+
+Once the LLM gateway is configured (same env as above), the scheduled check —
+Monday 09:00 Asia/Shanghai — switches from the offline mock to
+`RealUpdateChecker`: it re-reads each published entry's official page and asks
+the LLM what changed. Only real, confident differences (deadline, start date,
+timeline, audience tags — never guessed) become pending items in **Check
+updates**; the admin applies or discards them there. Unreachable pages and
+gateway failures are skipped per entry, never crash the round. Set
+`UPDATE_CHECKER=off` to pin the mock (tests/e2e do this implicitly via
+`SEARCH_SOURCE=off`).
 
 ## Production build
 
