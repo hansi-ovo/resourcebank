@@ -15,6 +15,7 @@ afterEach(() => {
 const mockCtx = (existing: Set<string> = new Set()) => ({
   existingUrls: existing,
   existingEntries: [],
+  recentQueries: [] as string[],
 });
 
 describe('MockSearchProvider scoring (01-architecture §4)', () => {

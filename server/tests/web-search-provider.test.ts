@@ -49,12 +49,19 @@ const EXISTING: ExistingEntryRef[] = [
   },
 ];
 
-function makeCtx(opts: { existingUrls?: string[]; existingEntries?: ExistingEntryRef[] } = {}) {
+function makeCtx(
+  opts: {
+    existingUrls?: string[];
+    existingEntries?: ExistingEntryRef[];
+    recentQueries?: string[];
+  } = {},
+) {
   const editions: Array<{ name: string; url: string }> = [];
   const holder: { stats: SearchStats | undefined } = { stats: undefined };
   const ctx: SearchContext = {
     existingUrls: new Set(opts.existingUrls ?? []),
     existingEntries: opts.existingEntries ?? [],
+    recentQueries: opts.recentQueries ?? [],
     onSameProgramEdition: (c) => {
       editions.push(c);
     },
@@ -217,7 +224,7 @@ describe('WebSearchProvider pipeline', () => {
     const { ctx } = makeCtx();
     const drafts = await provider.search('', 'fellowships', ctx);
 
-    expect(seenQueries[0]).toEqual(CATEGORY_PROMPTS.fellowships.include.slice(0, 3));
+    expect(seenQueries[0]).toEqual(CATEGORY_PROMPTS.fellowships.include);
     expect(drafts).toHaveLength(1);
   });
 

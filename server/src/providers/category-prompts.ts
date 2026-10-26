@@ -129,13 +129,31 @@ Source quality: ${s.sourceQuality}`;
 }
 
 /** Query-planning prompt: LLM turns the admin's prompt + category spec into diverse web queries. */
-export function queryPlannerMessages(prompt: string, scope: Scope): { system: string; user: string } {
+export function queryPlannerMessages(
+  prompt: string,
+  scope: Scope,
+  recentQueries: string[] = [],
+  existingNames: string[] = [],
+): { system: string; user: string } {
   const system = `You plan web searches for a university student-opportunities resource bank.
 ${specText(scope)}
 Return 4 to 7 English search queries that TOGETHER cover different angles:
 geography, audience level, year/season, sub-domain, and synonyms of the core topic.
 Do not repeat the user's wording verbatim in every query; diversify.
 Prefer queries that surface OFFICIAL program pages rather than news or aggregator spam.
+${
+  recentQueries.length > 0
+    ? `The following queries were used by recent search rounds and found the same pages over and over.
+AVOID them and anything close to them — attack the topic from genuinely different angles
+(other regions, other audiences, other sub-topics, other year/season terms):
+${recentQueries.map((q) => `- ${q}`).join('\n')}`
+    : ''
+}${
+    existingNames.length > 0
+      ? `\nThese programs are ALREADY in the database — do not plan queries that would mainly re-find them:
+${existingNames.map((n) => `- ${n}`).join('\n')}`
+      : ''
+  }
 Respond with a single JSON object and nothing else:
 {"queries":["...","..."]}`;
 
@@ -150,6 +168,7 @@ export function extractionMessages(
   hit: { title: string; url: string; snippet: string },
   pageText: string,
   scope: Scope,
+  floor = 60,
 ): { system: string; user: string } {
   const system = `You extract structured data for a university student-opportunities resource bank.
 ${specText(scope)}
@@ -161,7 +180,7 @@ Rules:
 - timeline: application window text from the page, or "" when absent.
 - category: one of on-campus | fellowships | experiential | events | training, judged by the definition above.
 - quality (1–100): relevance to the scope definition (0–40) + completeness (clear dates/deadline and application path: 0–40) + authoritative source (0–20).
-  Below 70 means the page would waste an admin's review time — score it honestly.
+  Below ${floor} means the page would waste an admin's review time — score it honestly.
 Respond with a single JSON object and nothing else:
 {"name":"...","summary":"...","audience":["..."],"startsAt":null,"endsAt":null,"timeline":"","category":"fellowships","quality":0}`;
 

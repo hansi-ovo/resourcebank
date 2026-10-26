@@ -72,10 +72,14 @@ export class WebSearchProvider implements SearchProvider {
       extractionFailed: 0,
       lowQuality: 0,
       returned: 0,
+      queries: [],
     };
 
-    // 1. plan diverse queries (falls back to the raw prompt on any failure)
-    const queries = await this.planQueries(prompt, scope, o.maxQueries);
+    // 1. plan diverse queries (falls back to the raw prompt on any failure);
+    //    recent rounds' queries steer the planner away from re-finding the
+    //    same pages
+    const queries = await this.planQueries(prompt, scope, o.maxQueries, ctx.recentQueries);
+    stats.queries = queries;
 
     // 2. search the web — a dead source ends the round with stats.error
     let hits: RawHit[];
@@ -142,16 +146,26 @@ export class WebSearchProvider implements SearchProvider {
     const drafts: EntryDraft[] = [];
     await mapLimit(fetchable, o.extractConcurrency, async ({ c, text }) => {
       try {
-        const d = await this.extractDraft(c, text, scope);
+        const d = await this.extractDraft(c, text, scope, o.qualityFloor);
         if (d === null) {
           stats.extractionFailed += 1;
         } else if (d.quality < o.qualityFloor) {
           stats.lowQuality += 1;
+          console.log(
+            `[search] low-quality (q=${d.quality} < ${o.qualityFloor}) ${c.url} — ${d.name}`,
+          );
         } else {
           drafts.push(d);
         }
-      } catch {
+      } catch (err) {
         stats.extractionFailed += 1;
+        // previously swallowed — gateway flakiness was invisible (extractionFailed:8
+        // rounds with no log line). One line per failure names the cause.
+        console.warn(
+          '[search] extraction failed:',
+          err instanceof Error ? err.message : String(err),
+          `(${c.url})`,
+        );
       }
     });
 
@@ -167,31 +181,55 @@ export class WebSearchProvider implements SearchProvider {
     return returned;
   }
 
-  private async planQueries(prompt: string, scope: Scope, maxQueries: number): Promise<string[]> {
+  private async planQueries(
+    prompt: string,
+    scope: Scope,
+    maxQueries: number,
+    recentQueries: string[] = [],
+  ): Promise<string[]> {
     try {
-      const { system, user } = queryPlannerMessages(prompt, scope);
+      const { system, user } = queryPlannerMessages(prompt, scope, recentQueries);
       const parsed = await this.llm.chatJson({
         system,
         user,
         schema: plannerSchema,
         temperature: 0.5,
-        maxTokens: 900,
+        // The planner prompt carries recent queries + already-covered program
+        // names — 900 truncated the JSON mid-array on the gateway ("LLM JSON
+        // is truncated"), silently dropping every round to the 1-query
+        // fallback. Queries are short; 1800 leaves ample headroom.
+        maxTokens: 1800,
       });
       const qs = [...new Set(parsed.queries.map((q) => q.trim()).filter(Boolean))].slice(0, maxQueries);
       if (qs.length > 0) return qs;
-    } catch {
-      /* planning failed — fall through to the static fallback below */
+    } catch (err) {
+      console.warn(
+        '[search] query planning failed — using static fallback:',
+        err instanceof Error ? err.message : String(err),
+      );
     }
     // Static fallbacks: the typed prompt when present; otherwise the scope's
     // category include-angles (tag-only search), or one generic query.
-    if (prompt.trim().length >= 4) return [prompt.trim()];
-    if (scope !== 'all') return CATEGORY_PROMPTS[scope].include.slice(0, 3);
-    return ['leadership fellowships programs for university students'];
+    // Recent queries are filtered out here too, so even a planning failure
+    // doesn't re-run the exact same web searches as the previous rounds.
+    const fallback = prompt.trim().length >= 4
+      ? [prompt.trim()]
+      : scope !== 'all'
+        ? CATEGORY_PROMPTS[scope].include
+        : ['leadership fellowships programs for university students'];
+    const used = new Set(recentQueries.map((q) => q.toLowerCase()));
+    const fresh = fallback.filter((q) => !used.has(q.toLowerCase()));
+    return (fresh.length > 0 ? fresh : fallback).slice(0, maxQueries);
   }
 
   /** Extracts one draft; null = page unusable (counted as extractionFailed). */
-  private async extractDraft(hit: RawHit, pageText: string, scope: Scope): Promise<EntryDraft | null> {
-    const { system, user } = extractionMessages(hit, pageText, scope);
+  private async extractDraft(
+    hit: RawHit,
+    pageText: string,
+    scope: Scope,
+    qualityFloor: number,
+  ): Promise<EntryDraft | null> {
+    const { system, user } = extractionMessages(hit, pageText, scope, qualityFloor);
     const raw = await this.llm.chatJson({
       system,
       user,
@@ -227,8 +265,8 @@ export class WebSearchProvider implements SearchProvider {
   }
 }
 
-/** Bounded-concurrency map; order preserved. */
-async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
+/** Bounded-concurrency map; order preserved. Shared with RealUpdateChecker. */
+export async function mapLimit<T, R>(items: T[], limit: number, fn: (item: T) => Promise<R>): Promise<R[]> {
   const results: R[] = new Array(items.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, async () => {
