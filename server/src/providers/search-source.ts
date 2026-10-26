@@ -38,9 +38,11 @@ export function createSearchSource(): SearchSource {
   switch (config.searchSource) {
     case 'tavily':
       return new TavilySearchSource(config.tavilyApiKey, config.tavilyBaseUrl);
+    case 'searxng':
+      return new SearxngSearchSource(config.searxngUrl);
     default:
       throw new Error(
-        `SEARCH_SOURCE=${config.searchSource} has no implementation. Set SEARCH_SOURCE=tavily (SearXNG planned).`,
+        `SEARCH_SOURCE=${config.searchSource} has no implementation. Set SEARCH_SOURCE=tavily or searxng.`,
       );
   }
 }
@@ -128,5 +130,71 @@ export class GatewaySearchSource implements SearchSource {
   readonly kind = 'gateway' as const;
   async search(_queries: string[]): Promise<RawHit[]> {
     throw new Error('GatewaySearchSource: the DKU gateway has no web-search model; use SEARCH_SOURCE=tavily');
+  }
+}
+
+const searxngResponseSchema = z.object({
+  results: z
+    .array(
+      z.object({
+        title: z.string().catch(''),
+        url: z.string(),
+        content: z.string().catch(''),
+      }),
+    )
+    .catch([]),
+});
+
+/**
+ * SearXNG instance (JSON API: GET {base}/search?q=...&format=json).
+ * Self-hosted alternative to Tavily — same per-query failure tolerance and
+ * URL normalization/dedup as the Tavily adapter. Requires the instance to
+ * enable the JSON format (`formats: [html, json]` in settings.yml).
+ */
+export class SearxngSearchSource implements SearchSource {
+  readonly kind = 'searxng' as const;
+
+  constructor(
+    private readonly baseUrl: string,
+    private readonly maxResultsPerQuery = 8,
+    private readonly timeoutMs = 20_000,
+  ) {}
+
+  async search(queries: string[]): Promise<RawHit[]> {
+    if (queries.length === 0) return [];
+    const settled = await Promise.allSettled(queries.map((q) => this.query(q)));
+    const hits = new Map<string, RawHit>();
+    let failures = 0;
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        for (const r of s.value) collectHits(hits, r.title, r.url, r.content);
+      } else {
+        failures += 1;
+        console.error('[search-source] searxng query failed:', s.reason instanceof Error ? s.reason.message : s.reason);
+      }
+    }
+    if (failures === settled.length) {
+      throw new Error(`all ${settled.length} searxng queries failed (SEARXNG_URL reachable? JSON format enabled?)`);
+    }
+    return [...hits.values()];
+  }
+
+  private async query(q: string): Promise<{ title: string; url: string; content: string }[]> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+    try {
+      const url = new URL('/search', this.baseUrl);
+      url.searchParams.set('q', q);
+      url.searchParams.set('format', 'json');
+      const res = await fetch(url, {
+        signal: controller.signal,
+        headers: { Accept: 'application/json' },
+      });
+      if (res.status === 403) throw new Error('searxng 403 — enable "json" in the instance formats setting');
+      if (!res.ok) throw new Error(`searxng HTTP ${res.status}`);
+      return searxngResponseSchema.parse(await res.json()).results;
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }
