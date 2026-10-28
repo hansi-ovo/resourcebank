@@ -210,6 +210,13 @@ export function AdminHome() {
                   Go to review
                   <ChevronRightIcon className="h-4 w-4" aria-hidden />
                 </Link>
+                <Link
+                  to="/admin/review/manual-add"
+                  className="inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-[14px] font-semibold text-white transition-all duration-150 hover:brightness-110 active:scale-[0.98]"
+                  style={{ background: 'var(--ramp-mid)' }}
+                >
+                  Add manually
+                </Link>
               </div>
             </>
           ) : (

@@ -230,3 +230,42 @@ test('FuseButton respects prefers-reduced-motion (instant, no fuse burn)', async
   await expect(page.locator('tbody tr').first()).toBeVisible();
   await ctx.close();
 });
+
+test('manual add: home button → left nav → form → lands in content management', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+
+  // home button routes into the manual-add tab
+  await page.getByRole('link', { name: 'Add manually' }).click();
+  await expect(page).toHaveURL(/\/admin\/review\/manual-add$/);
+
+  // left nav carries the manual-add item (the only one on this page)
+  await expect(page.getByRole('link', { name: 'Add manually' })).toBeVisible();
+
+  // fill the form (fields mirror the review table header)
+  const url = `https://example.edu/manual-${Date.now()}`;
+  await page.getByLabel(/Program/).fill('Manually Added Fellowship');
+  await page.getByRole('radio', { name: 'Fellowships' }).click();
+  await page.getByLabel('Web link').fill(url);
+  await page.getByLabel('Add eligibility tag').fill('Undergraduates');
+  await page.getByLabel('Add eligibility tag').press('Enter');
+  await page.getByLabel(/^Overview/).fill('A program the admin typed in by hand during an e2e run, with enough text.');
+
+  await page.getByRole('button', { name: 'Add to Content management' }).click();
+
+  // toast + redirect into content management, where the row is live
+  await expect(page.getByText('Added to Content management')).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/admin\/review\/content-management$/);
+  await expect(page.locator('tbody tr', { hasText: 'Manually Added Fellowship' }).first()).toBeVisible();
+
+  // it is live on the public payload too (manual = published)
+  const pub = await page.request.get('/api/published');
+  const sections = (await pub.json()) as Array<{ category: { id: string }; entries: { url: string }[] }>;
+  expect(
+    sections
+      .find((s) => s.category.id === 'fellowships')!
+      .entries.some((e) => e.url === url),
+  ).toBe(true);
+});
