@@ -175,3 +175,102 @@ describe('/api/published (public)', () => {
     expect(flatAfter.some((e: { id: number }) => e.id === victim.id)).toBe(false);
   });
 });
+
+describe('manual creation (POST /api/entries)', () => {
+  const body = {
+    name: 'Manually Added Program',
+    summary: 'A program the admin typed in by hand, with enough summary text to pass validation.',
+    url: 'https://example.edu/manual-program',
+    category: 'fellowships',
+  };
+
+  it('creates a published entry with source=manual and all provided fields', async () => {
+    const { app } = fresh();
+    const cookie = await login(app);
+
+    const res = await request(app)
+      .post('/api/entries')
+      .set('Cookie', cookie)
+      .send({
+        ...body,
+        audience: ['Undergraduates', 'First-years'],
+        timeline: 'Apply by March 1',
+        notes: 'Typed from a paper flyer',
+        imageUrl: 'https://example.edu/manual-program/cover.jpg',
+      });
+    expect(res.status).toBe(201);
+    expect(res.body.status).toBe('published');
+    expect(res.body.source).toBe('manual');
+    expect(res.body.audience).toEqual(['Undergraduates', 'First-years']);
+    expect(res.body.timeline).toBe('Apply by March 1');
+    expect(res.body.notes).toBe('Typed from a paper flyer');
+    expect(res.body.imageUrl).toBe('https://example.edu/manual-program/cover.jpg');
+
+    // lands in the published list (content management) AND the public payload
+    const published = await listEntries(app, cookie, 'published');
+    expect(published.some((e) => e.id === res.body.id)).toBe(true);
+    const pub = await request(app).get('/api/published');
+    expect(
+      pub.body
+        .find((s: { category: { id: string } }) => s.category.id === 'fellowships')
+        .entries.some((e: { id: number }) => e.id === res.body.id),
+    ).toBe(true);
+  });
+
+  it('defaults optional fields and accepts empty imageUrl as no image', async () => {
+    const { app } = fresh();
+    const cookie = await login(app);
+    const res = await request(app).post('/api/entries').set('Cookie', cookie).send(body);
+    expect(res.status).toBe(201);
+    expect(res.body.audience).toEqual([]);
+    expect(res.body.timeline).toBe('');
+    expect(res.body.notes).toBe('');
+    expect(res.body.imageUrl).toBeNull();
+  });
+
+  it('rejects a duplicate URL with 409 (any existing status)', async () => {
+    const { app, db } = fresh();
+    const cookie = await login(app);
+    // a review-status row still blocks the URL
+    const review = (await listEntries(app, cookie, 'review'))[0];
+
+    const res = await request(app)
+      .post('/api/entries')
+      .set('Cookie', cookie)
+      .send({ ...body, url: review.url });
+    expect(res.status).toBe(409);
+
+    // and a published row too
+    const published = (await listEntries(app, cookie, 'published'))[0];
+    const res2 = await request(app)
+      .post('/api/entries')
+      .set('Cookie', cookie)
+      .send({ ...body, url: published.url });
+    expect(res2.status).toBe(409);
+    expect(db.prepare('SELECT COUNT(*) AS n FROM entries WHERE url = ?').get(body.url)).toBeTruthy();
+  });
+
+  it('validates: missing name, bad URL, bad category, bad audience are 400', async () => {
+    const { app } = fresh();
+    const cookie = await login(app);
+
+    const cases = [
+      { ...body, name: '' },
+      { ...body, name: '   ' },
+      { name: 'No URL', summary: 'x'.repeat(40), category: 'events' },
+      { ...body, url: 'not-a-url' },
+      { ...body, category: 'nonexistent' },
+      { ...body, audience: ['ok', ''] },
+    ];
+    for (const bad of cases) {
+      const res = await request(app).post('/api/entries').set('Cookie', cookie).send(bad);
+      expect(res.status).toBe(400);
+    }
+  });
+
+  it('requires admin (401 without cookie)', async () => {
+    const { app } = fresh();
+    const res = await request(app).post('/api/entries').send(body);
+    expect(res.status).toBe(401);
+  });
+});

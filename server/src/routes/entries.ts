@@ -20,6 +20,21 @@ const patchSchema = z
   })
   .refine((v) => Object.keys(v).length > 0, 'At least one field');
 
+/** POST /api/entries — manual creation (admin fills the form by hand).
+ *  Same required core as the review table header: name, summary, url,
+ *  category; the rest optional. Created straight into `published` — the
+ *  admin's manual entry IS the review decision. */
+const createSchema = z.object({
+  name: z.string().trim().min(1).max(300),
+  summary: z.string().trim().min(1).max(2000),
+  url: z.string().trim().url().max(1000),
+  category: z.enum(CATEGORY_IDS),
+  audience: z.array(z.string().trim().min(1).max(120)).max(12).default([]),
+  timeline: z.string().trim().max(500).default(''),
+  notes: z.string().trim().max(1000).default(''),
+  imageUrl: z.union([z.literal(''), z.string().trim().url().max(1000)]).optional(),
+});
+
 /** GET /api/entries/published — public display payload grouped by canonical order. */
 export function publishedPayload(db: Database.Database) {
   const rows = db
@@ -47,6 +62,41 @@ export function entriesRoutes(db: Database.Database, bus: Bus): Router {
 
   router.get('/published', (_req, res) => {
     res.json(publishedPayload(db));
+  });
+
+  /** POST /api/entries — manual creation. 409 on duplicate URL (any status). */
+  router.post('/', (req, res) => {
+    const parsed = createSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: 'Invalid entry', issues: parsed.error.issues });
+      return;
+    }
+    const v = parsed.data;
+    if (db.prepare('SELECT id FROM entries WHERE url = ?').get(v.url)) {
+      res.status(409).json({ error: 'URL already exists' });
+      return;
+    }
+    const now = new Date().toISOString();
+    const imageUrl = v.imageUrl ? v.imageUrl : null;
+    const info = db
+      .prepare(
+        `INSERT INTO entries (name, summary, url, audience, starts_at, ends_at, timeline, notes, category, image_url, quality, status, source, created_at, updated_at)
+         VALUES (@name, @summary, @url, @audience, NULL, NULL, @timeline, @notes, @category, @imageUrl, NULL, 'published', 'manual', @now, @now)`,
+      )
+      .run({
+        name: v.name,
+        summary: v.summary,
+        url: v.url,
+        audience: JSON.stringify(v.audience),
+        timeline: v.timeline,
+        notes: v.notes,
+        category: v.category,
+        imageUrl,
+        now,
+      });
+    bus.emitEntriesChanged();
+    const row = db.prepare('SELECT * FROM entries WHERE id = ?').get(info.lastInsertRowid) as Row;
+    res.status(201).json(toEntry(row));
   });
 
   /** PUT /api/entries/:id — inline edits. */
