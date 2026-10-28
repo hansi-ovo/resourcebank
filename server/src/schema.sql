@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS entries (
   image_url    TEXT,
   quality      INTEGER,
   status       TEXT NOT NULL DEFAULT 'review' CHECK (status IN ('review','published','removed','withdrawn')),
-  source       TEXT NOT NULL DEFAULT 'search' CHECK (source IN ('search','update-apply')),
+  source       TEXT NOT NULL DEFAULT 'search' CHECK (source IN ('search','update-apply','manual')),
   created_at   TEXT NOT NULL,
   updated_at   TEXT NOT NULL
 );

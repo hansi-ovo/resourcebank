@@ -20,7 +20,7 @@ export type Row = {
   image_url: string | null;
   quality: number | null;
   status: 'review' | 'published' | 'removed' | 'withdrawn';
-  source: 'search' | 'update-apply';
+  source: 'search' | 'update-apply' | 'manual';
   created_at: string;
   updated_at: string;
 };
@@ -64,6 +64,47 @@ export function openDb(file: string): Database.Database {
   const searchCols = db.prepare('PRAGMA table_info(searches)').all() as Array<{ name: string }>;
   if (!searchCols.some((c) => c.name === 'stats')) {
     db.exec('ALTER TABLE searches ADD COLUMN stats TEXT');
+  }
+  // migration (manual entries): the source CHECK gained 'manual' — SQLite
+  // cannot ALTER a CHECK, so an entries table created before this change is
+  // rebuilt in place (detected via the stored CREATE TABLE sql). Runs after
+  // the column migrations so timeline/notes exist for the row copy.
+  const entriesDdl = db
+    .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'entries'")
+    .get() as { sql: string } | undefined;
+  if (entriesDdl && !entriesDdl.sql.includes("'manual'")) {
+    db.pragma('foreign_keys = OFF');
+    db.transaction(() => {
+      db.exec(`
+        CREATE TABLE entries_new (
+          id           INTEGER PRIMARY KEY,
+          name         TEXT NOT NULL,
+          summary      TEXT NOT NULL,
+          url          TEXT NOT NULL UNIQUE,
+          audience     TEXT NOT NULL,
+          starts_at    TEXT,
+          ends_at      TEXT,
+          timeline     TEXT NOT NULL DEFAULT '',
+          notes        TEXT NOT NULL DEFAULT '',
+          category     TEXT NOT NULL CHECK (category IN ('on-campus','fellowships','experiential','events','training')),
+          image_url    TEXT,
+          quality      INTEGER,
+          status       TEXT NOT NULL DEFAULT 'review' CHECK (status IN ('review','published','removed','withdrawn')),
+          source       TEXT NOT NULL DEFAULT 'search' CHECK (source IN ('search','update-apply','manual')),
+          created_at   TEXT NOT NULL,
+          updated_at   TEXT NOT NULL
+        );
+        INSERT INTO entries_new (id, name, summary, url, audience, starts_at, ends_at, timeline, notes, category, image_url, quality, status, source, created_at, updated_at)
+          SELECT id, name, summary, url, audience, starts_at, ends_at, timeline, notes, category, image_url, quality, status, source, created_at, updated_at FROM entries;
+        DROP TABLE entries;
+        ALTER TABLE entries_new RENAME TO entries;
+      `);
+    })();
+    db.exec(
+      'CREATE INDEX IF NOT EXISTS idx_entries_status ON entries(status);\n' +
+        'CREATE INDEX IF NOT EXISTS idx_entries_category ON entries(category);',
+    );
+    db.pragma('foreign_keys = ON');
   }
   return db;
 }

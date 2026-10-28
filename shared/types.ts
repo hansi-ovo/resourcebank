@@ -34,7 +34,7 @@ export function categoryMeta(id: CategoryId): CategoryMeta {
 }
 
 export type EntryStatus = 'review' | 'published' | 'removed' | 'withdrawn';
-export type EntrySource = 'search' | 'update-apply';
+export type EntrySource = 'search' | 'update-apply' | 'manual';
 export type Scope = 'all' | CategoryId;
 
 export interface Entry {
