@@ -85,7 +85,7 @@ export const config = {
   tavilyBaseUrl: (process.env.TAVILY_BASE_URL || 'https://api.tavily.com').replace(/\/+$/, ''),
   searxngUrl: (process.env.SEARXNG_URL || '').replace(/\/+$/, ''),
   /** Drafts scoring below this are dropped before they reach the review list. */
-  searchQualityFloor: Number(process.env.SEARCH_QUALITY_FLOOR || 60),
+  searchQualityFloor: Number(process.env.SEARCH_QUALITY_FLOOR || 50),
 };
 
 /** True when the LLM gateway is configured (any real search source needs it). */

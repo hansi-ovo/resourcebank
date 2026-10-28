@@ -108,7 +108,9 @@ describe('WebSearchProvider pipeline', () => {
     const { ctx, holder } = makeCtx();
     const drafts = await provider.search('fellowships for undergraduates', 'all', ctx);
 
-    expect(seenQueries[0]).toEqual(['fellowship asia undergraduate funded', 'youth summit delegates 2027']);
+    // planner's 2 queries lead; the pool pads them up to ≥ 4 angles
+    expect(seenQueries[0]!.slice(0, 2)).toEqual(['fellowship asia undergraduate funded', 'youth summit delegates 2027']);
+    expect(seenQueries[0]!.length).toBeGreaterThanOrEqual(4);
     expect(drafts).toHaveLength(2);
     expect(drafts[0]!.quality).toBe(88);
     expect(holder.stats).toMatchObject({
@@ -212,7 +214,9 @@ describe('WebSearchProvider pipeline', () => {
     const { ctx } = makeCtx();
     const drafts = await provider.search('fellowships for undergraduates', 'all', ctx);
 
-    expect(seenQueries[0]).toEqual(['fellowships for undergraduates']);
+    // prompt first, then padded from the generic angle pool (≥ 4 total)
+    expect(seenQueries[0]).toHaveLength(7);
+    expect(seenQueries[0]![0]).toBe('fellowships for undergraduates');
     expect(drafts).toHaveLength(1);
   });
 
@@ -224,11 +228,44 @@ describe('WebSearchProvider pipeline', () => {
     const { ctx } = makeCtx();
     const drafts = await provider.search('', 'fellowships', ctx);
 
-    expect(seenQueries[0]).toEqual(CATEGORY_PROMPTS.fellowships.include);
+    // the scope's include-angles lead the pool, padded with year variants
+    expect(seenQueries[0]!.slice(0, 4)).toEqual(CATEGORY_PROMPTS.fellowships.include.slice(0, 4));
+    expect(seenQueries[0]!.length).toBeGreaterThanOrEqual(4);
     expect(drafts).toHaveLength(1);
   });
 
-  it('tag-only search with scope=all falls back to one generic query', async () => {
+  it('pads an under-delivering planner up to ≥ 4 queries', async () => {
+    const { provider, seenQueries } = makeProvider(
+      { plan: { queries: ['only one query'] }, classify: { matches: [] }, extract: GOOD_DRAFT },
+      [HIT_A],
+    );
+    const { ctx } = makeCtx();
+    await provider.search('', 'fellowships', ctx);
+
+    const qs = seenQueries[0]!;
+    expect(qs[0]).toBe('only one query'); // the planner's query still leads
+    expect(qs.length).toBeGreaterThanOrEqual(4);
+    // padding comes from the scope's include-angles (planner prompt was empty)
+    expect(qs.slice(1)).toEqual(expect.arrayContaining(CATEGORY_PROMPTS.fellowships.include));
+    // no duplicates
+    expect(new Set(qs.map((q) => q.toLowerCase())).size).toBe(qs.length);
+  });
+
+  it('recent-round queries are filtered out of both planned and padded queries', async () => {
+    const { provider, seenQueries } = makeProvider(
+      { plan: { queries: ['only one query'] }, classify: { matches: [] }, extract: GOOD_DRAFT },
+      [HIT_A],
+    );
+    const recent = [CATEGORY_PROMPTS.fellowships.include[0]!];
+    const { ctx } = makeCtx({ recentQueries: recent });
+    await provider.search('', 'fellowships', ctx);
+
+    const qs = seenQueries[0]!;
+    expect(qs).not.toContain(recent[0]);
+    expect(qs.length).toBeGreaterThanOrEqual(3); // planner's 1 + pool minus the used angle
+  });
+
+  it('tag-only search with scope=all falls back to the generic angle pool', async () => {
     const { provider, seenQueries } = makeProvider(
       { plan: null, classify: { matches: [] }, extract: GOOD_DRAFT },
       [HIT_A],
@@ -236,7 +273,8 @@ describe('WebSearchProvider pipeline', () => {
     const { ctx } = makeCtx();
     const drafts = await provider.search('', 'all', ctx);
 
-    expect(seenQueries[0]).toEqual(['leadership fellowships programs for university students']);
+    expect(seenQueries[0]![0]).toBe('fully funded leadership fellowships for university students');
+    expect(seenQueries[0]!.length).toBeGreaterThanOrEqual(4);
     expect(drafts).toHaveLength(1);
   });
 

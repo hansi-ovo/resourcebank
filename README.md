@@ -75,7 +75,7 @@ node scripts/lighthouse.mjs     # a11y/perf (LH_BASE env selects origin)
 
 The search pipeline is real by default when configured — Tavily finds candidate
 pages, the DKU NewAPI gateway (OpenAI-compatible) plans queries, judges
-duplicates, extracts structured drafts, and scores quality (floor 60). Fill in
+  duplicates, extracts structured drafts, and scores quality (floor 50). Fill in
 `.env` (see `deploy/.env.example`):
 
 ```

@@ -187,6 +187,12 @@ export class WebSearchProvider implements SearchProvider {
     maxQueries: number,
     recentQueries: string[] = [],
   ): Promise<string[]> {
+    // Rounds that ran a single query kept collapsing to an 8-candidate pool
+    // and dying at the quality/dedup gates (saturation report:
+    // queries:["leadership fellowships…"], returned:0). The planner is
+    // therefore never trusted alone: whatever it returns gets padded from a
+    // static angle pool below until there are at least 4 usable queries.
+    let planned: string[] = [];
     try {
       const { system, user } = queryPlannerMessages(prompt, scope, recentQueries);
       const parsed = await this.llm.chatJson({
@@ -200,26 +206,43 @@ export class WebSearchProvider implements SearchProvider {
         // fallback. Queries are short; 1800 leaves ample headroom.
         maxTokens: 1800,
       });
-      const qs = [...new Set(parsed.queries.map((q) => q.trim()).filter(Boolean))].slice(0, maxQueries);
-      if (qs.length > 0) return qs;
+      planned = [...new Set(parsed.queries.map((q) => q.trim()).filter(Boolean))];
     } catch (err) {
       console.warn(
         '[search] query planning failed — using static fallback:',
         err instanceof Error ? err.message : String(err),
       );
     }
-    // Static fallbacks: the typed prompt when present; otherwise the scope's
-    // category include-angles (tag-only search), or one generic query.
-    // Recent queries are filtered out here too, so even a planning failure
-    // doesn't re-run the exact same web searches as the previous rounds.
-    const fallback = prompt.trim().length >= 4
-      ? [prompt.trim()]
-      : scope !== 'all'
+
+    // Static pool: the typed prompt, the scope's include-angles (tag-only
+    // search), and year-stamped variants — the padding material that keeps
+    // every round above MIN_QUERIES.
+    const typed = prompt.trim().length >= 4 ? [prompt.trim()] : [];
+    const pool = [
+      ...typed,
+      ...(scope !== 'all'
         ? CATEGORY_PROMPTS[scope].include
-        : ['leadership fellowships programs for university students'];
+        : [
+            'fully funded leadership fellowships for university students',
+            'undergraduate summer research and field programs abroad',
+            'student delegate conferences and youth summits',
+            'leadership training academies and certificate programs',
+          ]),
+      ...['2026', '2027'].map((y) => `${typed[0] ?? 'leadership fellowships for university students'} ${y} application`),
+    ];
+
+    // Dedupe against each other and against recent rounds' queries (a
+    // planning failure must not re-run the exact same searches either).
     const used = new Set(recentQueries.map((q) => q.toLowerCase()));
-    const fresh = fallback.filter((q) => !used.has(q.toLowerCase()));
-    return (fresh.length > 0 ? fresh : fallback).slice(0, maxQueries);
+    const fresh = planned.filter((q) => !used.has(q.toLowerCase()));
+    const pad = pool.filter((q) => !used.has(q.toLowerCase()) && !fresh.some((f) => f.toLowerCase() === q.toLowerCase()));
+    if (fresh.length === 0 && pad.length === 0) return planned.slice(0, maxQueries); // everything recently used — better than nothing
+    // The pool (prompt + 4–5 category angles + year variants) always carries
+    // ≥ 4 usable angles, so under-delivering planners get padded up to at
+    // least 4 whenever recent-round filtering still leaves material; a
+    // planner that already delivered 4+ is trusted as-is.
+    if (fresh.length >= 4) return fresh.slice(0, maxQueries);
+    return [...fresh, ...pad].slice(0, maxQueries);
   }
 
   /** Extracts one draft; null = page unusable (counted as extractionFailed). */
