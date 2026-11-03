@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { config } from '../config';
 import { normalizeUrl } from './dedup';
+import { WechatSearchSource } from './wechat-source';
 import type { RawHit } from './types';
 
 /**
@@ -14,7 +15,7 @@ import type { RawHit } from './types';
  */
 
 export interface SearchSource {
-  readonly kind: 'tavily' | 'searxng' | 'gateway';
+  readonly kind: 'tavily' | 'searxng' | 'gateway' | 'wechat' | 'composite';
   search(queries: string[]): Promise<RawHit[]>;
 }
 
@@ -34,16 +35,60 @@ export function collectHits(hits: Map<string, RawHit>, title: string, url: strin
   }
 }
 
-export function createSearchSource(): SearchSource {
-  switch (config.searchSource) {
-    case 'tavily':
-      return new TavilySearchSource(config.tavilyApiKey, config.tavilyBaseUrl);
-    case 'searxng':
-      return new SearxngSearchSource(config.searxngUrl);
-    default:
-      throw new Error(
-        `SEARCH_SOURCE=${config.searchSource} has no implementation. Set SEARCH_SOURCE=tavily or searxng.`,
-      );
+export function createSearchSource(opts: { wechatWhitelist?: () => readonly string[] } = {}): SearchSource {
+  const kinds = config.searchSources;
+  if (kinds.length === 0) {
+    throw new Error(
+      `SEARCH_SOURCE=${process.env.SEARCH_SOURCE ?? 'off'} has no implementation. Set SEARCH_SOURCE=tavily, searxng, wechat or a comma combination.`,
+    );
+  }
+  const sources = kinds.map((kind) => {
+    switch (kind) {
+      case 'tavily':
+        return new TavilySearchSource(config.tavilyApiKey, config.tavilyBaseUrl);
+      case 'searxng':
+        return new SearxngSearchSource(config.searxngUrl);
+      case 'wechat': {
+        // whitelist is a live callback — the source re-reads it every round
+        const getWhitelist = opts.wechatWhitelist ?? (() => [] as string[]);
+        return new WechatSearchSource(config.tavilyApiKey, config.tavilyBaseUrl, 20_000, fetch, [], getWhitelist);
+      }
+      default:
+        throw new Error(`SEARCH_SOURCE part "${kind}" has no implementation.`);
+    }
+  });
+  return sources.length === 1 ? sources[0]! : new CompositeSearchSource(sources);
+}
+
+/**
+ * Merges several search sources into one round. All sources run in parallel;
+ * results are deduped by normalized URL (the first source to report a URL
+ * wins). Fails only when EVERY source fails — one dead channel degrades the
+ * round instead of killing it.
+ */
+export class CompositeSearchSource implements SearchSource {
+  readonly kind = 'composite' as const;
+
+  constructor(private readonly sources: SearchSource[]) {}
+
+  async search(queries: string[]): Promise<RawHit[]> {
+    const settled = await Promise.allSettled(this.sources.map((s) => s.search(queries)));
+    const hits = new Map<string, RawHit>();
+    let failures = 0;
+    for (const s of settled) {
+      if (s.status === 'fulfilled') {
+        for (const h of s.value) {
+          if (!hits.has(h.url)) hits.set(h.url, h);
+        }
+      } else {
+        failures += 1;
+        console.error('[search-source] composite member failed:', s.reason instanceof Error ? s.reason.message : s.reason);
+      }
+    }
+    if (failures === settled.length) {
+      throw new Error(`all ${settled.length} composite search sources failed`);
+    }
+    return [...hits.values()];
   }
 }
 
