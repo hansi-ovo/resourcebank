@@ -91,6 +91,38 @@ handling: exact-page dedup via URL normalization, plus an LLM entity check —
 a newer edition of a known program (…/2027 of …/2026) routes to **Check
 updates** as a pending url-diff instead of polluting the review list.
 
+### WeChat official-account search (`SEARCH_SOURCE=wechat`)
+
+Same env as `tavily` (LLM gateway + `TAVILY_API_KEY`), plus
+`SEARCH_SOURCE=wechat`. Finds mp.weixin.qq.com articles through two channels:
+Sogou WeChat search (weixin.sogou.com, no key needed but aggressive
+rate-limiting — it serves a captcha wall after ~2 rounds of queries from one
+IP; back off and retry later) and Tavily pinned `site:mp.weixin.qq.com`
+queries (sparser but reliable). Every article is triaged by the LLM:
+
+- **entry** — the post announces ONE concrete opportunity (program,
+  fellowship, internship, or campus/part-time recruitment aimed at students).
+  The article URL itself becomes the review-list entry, since WeChat posts
+  have no official program site.
+- **roundup** — a resource-bank style post summarizing multiple projects.
+  The article is NOT stored; external project URLs mentioned in its text are
+  extracted (LLM list ∪ deterministic plain-text scan) and each one is
+  fetched and extracted as its own draft, deduped against the DB.
+- **skip** — NOT review-worthy. All of the following are dropped:
+  * opportunities whose application deadline (shown in the article) is
+    already past — the LLM sees today's date and reports the deadline it
+    finds, and the pipeline double-checks that ISO date deterministically
+    before anything reaches the review list;
+  * sports competitions (athletic tournaments, races, leagues — academic
+    case competitions and hackathons are kept);
+  * experienced-hire full-time recruitment ads (社招), news, marketing.
+  Internships, part-time and campus recruitment for
+  undergraduates/graduates are kept.
+
+Maintenance: `node scripts/sweep-expired.mjs [--dry-run]` re-checks the
+current review list against today's date (Asia/Shanghai) and moves every
+entry with a past `endsAt` to removed.
+
 ### Weekly update check (real checker)
 
 Once the LLM gateway is configured (same env as above), the scheduled check —
