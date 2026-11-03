@@ -91,33 +91,48 @@ handling: exact-page dedup via URL normalization, plus an LLM entity check —
 a newer edition of a known program (…/2027 of …/2026) routes to **Check
 updates** as a pending url-diff instead of polluting the review list.
 
-### WeChat official-account search (`SEARCH_SOURCE=wechat`)
+### WeChat official-account search (`SEARCH_SOURCE=wechat` or `tavily,wechat`)
 
-Same env as `tavily` (LLM gateway + `TAVILY_API_KEY`), plus
-`SEARCH_SOURCE=wechat`. Finds mp.weixin.qq.com articles through two channels:
-Sogou WeChat search (weixin.sogou.com, no key needed but aggressive
+`SEARCH_SOURCE` accepts a comma-combination: `tavily,wechat` merges the
+plain-web channel and the WeChat channel into one round
+(`CompositeSearchSource`, deduped by normalized URL). Same env as `tavily`
+(LLM gateway + `TAVILY_API_KEY`). WeChat articles are found through two
+channels: Sogou WeChat search (weixin.sogou.com, no key needed but aggressive
 rate-limiting — it serves a captcha wall after ~2 rounds of queries from one
-IP; back off and retry later) and Tavily pinned `site:mp.weixin.qq.com`
-queries (sparser but reliable). Every article is triaged by the LLM:
+IP and may stay walled for minutes; back off and retry later) and Tavily
+(weixin articles are sparsely indexed, but whitelisted accounts' official
+pages surface reliably). Every article is triaged by the LLM:
 
 - **entry** — the post announces ONE concrete opportunity (program,
-  fellowship, internship, or campus/part-time recruitment aimed at students).
-  The article URL itself becomes the review-list entry, since WeChat posts
-  have no official program site.
+  fellowship, summer school, conference, internship, or campus/part-time
+  recruitment aimed at students). The article URL itself becomes the
+  review-list entry, since WeChat posts have no official program site.
 - **roundup** — a resource-bank style post summarizing multiple projects.
   The article is NOT stored; external project URLs mentioned in its text are
   extracted (LLM list ∪ deterministic plain-text scan) and each one is
   fetched and extracted as its own draft, deduped against the DB.
 - **skip** — NOT review-worthy. All of the following are dropped:
-  * opportunities whose application deadline (shown in the article) is
-    already past — the LLM sees today's date and reports the deadline it
-    finds, and the pipeline double-checks that ISO date deterministically
-    before anything reaches the review list;
+  * one-off opportunities whose application deadline (shown in the article)
+    is already past — the LLM sees today's date and reports the deadline it
+    finds, and the pipeline double-checks that ISO date deterministically.
+    **Recurring/annual programs with a closed window survive** (they are
+    marked recurring and kept);
   * sports competitions (athletic tournaments, races, leagues — academic
     case competitions and hackathons are kept);
   * experienced-hire full-time recruitment ads (社招), news, marketing.
   Internships, part-time and campus recruitment for
   undergraduates/graduates are kept.
+
+### WeChat whitelist
+
+Only whitelisted official accounts' articles enter the review list. Managed
+in the admin app: search bar → gear icon (Search settings) → add/remove
+account names. Stored live in the settings table; edits apply from the next
+search round without a restart. Seeded with `WECHAT_WHITELIST` env (default
+"Impact Circle, Microcosmos志愿者营地"). In whitelist mode the account names
+themselves become targeted queries, and the WeChat channel also surfaces the
+accounts' official non-WeChat pages (Notion, homepages), which go through
+the normal extraction + freshness gates.
 
 Maintenance: `node scripts/sweep-expired.mjs [--dry-run]` re-checks the
 current review list against today's date (Asia/Shanghai) and moves every
