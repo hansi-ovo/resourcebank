@@ -9,7 +9,8 @@ import { CatChip } from '@/components/ui/Chip';
 import { Logo } from '@/components/ui/Logo';
 import { domain, formatStamp } from '@/lib/format';
 import { CATEGORIES, type AdminSummary, type Entry, type Scope } from 'shared/types';
-import { SendIcon, SpinnerIcon, ChevronRightIcon } from './icons';
+import { SendIcon, SpinnerIcon, ChevronRightIcon, SettingsIcon } from './icons';
+import { WhitelistPanel } from './WhitelistPanel';
 
 /**
  * `/admin` home (03-pages §Admin home). Copy deck verbatim; ⚑ items flagged.
@@ -29,6 +30,7 @@ export function AdminHome() {
   const [prompt, setPrompt] = useState('');
   const [scope, setScope] = useState<Scope>('all');
   const [searching, setSearching] = useState(false);
+  const [whitelistOpen, setWhitelistOpen] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -113,13 +115,27 @@ export function AdminHome() {
             <div className="relative mt-3">
               <input
                 id="search-prompt"
-                className="w-full rounded-xl border border-mist bg-surface px-4 py-3.5 pr-12 text-[16px] text-ink placeholder:text-ink-soft/60 focus-visible:outline-2"
+                className="w-full rounded-xl border border-mist bg-surface px-4 py-3.5 pr-24 text-[16px] text-ink placeholder:text-ink-soft/60 focus-visible:outline-2"
                 style={{ outlineColor: 'var(--focus)' }}
                 placeholder="Describe what to look for, e.g. leadership fellowships for undergraduates in Asia" /* ⚑ copy */
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 disabled={searching}
               />
+              {/* search settings: WeChat whitelist management */}
+              <div className="absolute bottom-3 right-12">
+                <button
+                  type="button"
+                  onClick={() => setWhitelistOpen((o) => !o)}
+                  aria-label="Search settings (WeChat whitelist)"
+                  aria-expanded={whitelistOpen}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-mist bg-surface text-ink-soft transition-colors hover:border-ink-soft/40 hover:text-ink focus-visible:outline-2"
+                  style={{ outlineColor: 'var(--focus)' }}
+                >
+                  <SettingsIcon className="h-4 w-4" aria-hidden />
+                </button>
+                {whitelistOpen ? <WhitelistPanel onClose={() => setWhitelistOpen(false)} /> : null}
+              </div>
               <button
                 type="submit"
                 className="absolute bottom-3 right-3 flex h-8 w-8 items-center justify-center rounded-lg text-white disabled:cursor-wait"
