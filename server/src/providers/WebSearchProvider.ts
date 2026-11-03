@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { CATEGORY_IDS, type CategoryId, type EntryDraft, type Scope, type SearchStats } from '../../../shared/types';
 import { config } from '../config';
 import { classifyEntities, normalizeUrl, type JsonLlm } from './dedup';
-import { extractionMessages, queryPlannerMessages, CATEGORY_PROMPTS } from './category-prompts';
+import { extractionMessages, freshnessMessages, queryPlannerMessages, wechatTriageMessages, CATEGORY_PROMPTS } from './category-prompts';
 import type { ExistingEntryRef, RawHit, SearchContext, SearchProvider } from './types';
 import type { SearchSource } from './search-source';
+import { isWechatArticleUrl, extractMentionedUrls } from './wechat-source';
 
 /**
  * The real search pipeline (search-upgrade Step 1):
@@ -35,6 +36,29 @@ const draftSchema = z.object({
   category: z.string().catch(''),
   quality: z.coerce.number().min(0).max(100).catch(0),
 });
+
+const triageSchema = z.object({
+  kind: z.enum(['entry', 'roundup', 'skip']).catch('skip'),
+  reason: z.string().max(300).catch(''),
+  expired: z.boolean().catch(false),
+  recurring: z.boolean().catch(false),
+  detectedEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  mentionedUrls: z.array(z.string()).catch([]),
+});
+
+const freshnessSchema = z.object({
+  status: z.enum(['dead', 'recurring', 'live', 'sports']).catch('live'),
+  detectedEndsAt: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).nullable().catch(null),
+  reason: z.string().max(300).catch(''),
+});
+
+/** True when an ISO deadline is strictly before today (Shanghai time). */
+export function isExpired(endsAt: string | null | undefined, today = new Date()): boolean {
+  if (!endsAt) return false;
+  const shanghai = new Date(today.toLocaleString('en-US', { timeZone: 'Asia/Shanghai' }));
+  const todayIso = shanghai.toISOString().slice(0, 10);
+  return endsAt < todayIso;
+}
 
 export interface WebSearchProviderOptions {
   maxQueries?: number;
@@ -74,6 +98,9 @@ export class WebSearchProvider implements SearchProvider {
       returned: 0,
       queries: [],
     };
+    // WeChat rounds produce many small drafts (roundup fan-out); the generic
+    // cap of 24 single-page candidates would starve the fan-out — allow more.
+    if (this.source.kind === 'wechat') o.maxCandidates = 30;
 
     // 1. plan diverse queries (falls back to the raw prompt on any failure);
     //    recent rounds' queries steer the planner away from re-finding the
@@ -131,7 +158,8 @@ export class WebSearchProvider implements SearchProvider {
     });
 
     // 5. fetch page text
-    const pageFn = o.pageFetcher ?? ((url: string) => fetchPageText(url, o.fetchTimeoutMs));
+    const isWechatRound = this.source.kind === 'wechat';
+    const pageFn = o.pageFetcher ?? ((url: string) => fetchPageText(url, o.fetchTimeoutMs, isWechatRound ? 12_000 : 4000));
     const pages = await mapLimit(fresh, o.fetchConcurrency, async (c) => {
       try {
         return { c, text: await pageFn(c.url) };
@@ -142,32 +170,43 @@ export class WebSearchProvider implements SearchProvider {
     const fetchable = pages.filter((p): p is { c: RawHit; text: string } => p.text !== null && p.text.length > 0);
     stats.extractionFailed += pages.length - fetchable.length;
 
-    // 6. LLM extraction + quality gate
+    // 6. extraction + quality gate.
+    //    WeChat rounds triage first: entry → extract from the article page;
+    //    roundup → fan out to the project URLs mentioned inside the article;
+    //    skip (社招 full-time ads etc.) → drop.
     const drafts: EntryDraft[] = [];
-    await mapLimit(fetchable, o.extractConcurrency, async ({ c, text }) => {
-      try {
-        const d = await this.extractDraft(c, text, scope, o.qualityFloor);
-        if (d === null) {
+    if (isWechatRound) {
+      const wechatDrafts = await this.wechatExtract(fetchable, scope, o, ctx, stats);
+      drafts.push(...wechatDrafts);
+    } else {
+      await mapLimit(fetchable, o.extractConcurrency, async ({ c, text }) => {
+        try {
+          const d = await this.extractDraft(c, text, scope, o.qualityFloor);
+          if (d === null) {
+            stats.extractionFailed += 1;
+          } else if (await this.isReallyDead(d)) {
+            stats.lowQuality += 1;
+            console.log(`[search] dead/sports dropped (deadline ${d.endsAt}) ${c.url} — ${d.name}`);
+          } else if (d.quality < o.qualityFloor) {
+            stats.lowQuality += 1;
+            console.log(
+              `[search] low-quality (q=${d.quality} < ${o.qualityFloor}) ${c.url} — ${d.name}`,
+            );
+          } else {
+            drafts.push(d);
+          }
+        } catch (err) {
           stats.extractionFailed += 1;
-        } else if (d.quality < o.qualityFloor) {
-          stats.lowQuality += 1;
-          console.log(
-            `[search] low-quality (q=${d.quality} < ${o.qualityFloor}) ${c.url} — ${d.name}`,
+          // previously swallowed — gateway flakiness was invisible (extractionFailed:8
+          // rounds with no log line). One line per failure names the cause.
+          console.warn(
+            '[search] extraction failed:',
+            err instanceof Error ? err.message : String(err),
+            `(${c.url})`,
           );
-        } else {
-          drafts.push(d);
         }
-      } catch (err) {
-        stats.extractionFailed += 1;
-        // previously swallowed — gateway flakiness was invisible (extractionFailed:8
-        // rounds with no log line). One line per failure names the cause.
-        console.warn(
-          '[search] extraction failed:',
-          err instanceof Error ? err.message : String(err),
-          `(${c.url})`,
-        );
-      }
-    });
+      });
+    }
 
     // 7. disambiguate same-name drafts (e.g. two "Schwarzman Scholars" pages
     //    from different organizers) by suffixing the source domain
@@ -243,6 +282,158 @@ export class WebSearchProvider implements SearchProvider {
     // planner that already delivered 4+ is trusted as-is.
     if (fresh.length >= 4) return fresh.slice(0, maxQueries);
     return [...fresh, ...pad].slice(0, maxQueries);
+  }
+
+  /**
+   * WeChat branch: triage every fetched article, then either
+   * - entry → extract a draft whose url IS the article (canonical source);
+   * - roundup → extract drafts from the project URLs mentioned inside;
+   * - skip → dropped (社招 full-time recruitment ads, news, marketing).
+   * Fan-out URLs already present in the DB are dropped silently (dedup);
+   * unresolvable ones count as extractionFailed.
+   */
+  private async wechatExtract(
+    fetchable: Array<{ c: RawHit; text: string }>,
+    scope: Scope,
+    o: { extractConcurrency: number; qualityFloor: number; fetchTimeoutMs: number; fetchConcurrency: number; pageFetcher?: (url: string) => Promise<string | null>; maxCandidates: number },
+    ctx: SearchContext,
+    stats: SearchStats,
+  ): Promise<EntryDraft[]> {
+    const drafts: EntryDraft[] = [];
+    const pageFn = o.pageFetcher ?? ((url: string) => fetchPageText(url, o.fetchTimeoutMs, 6000));
+
+    await mapLimit(fetchable, o.extractConcurrency, async ({ c, text }) => {
+      try {
+        const { system, user } = wechatTriageMessages(c, text, scope);
+        const t = await this.llm.chatJson({ system, user, schema: triageSchema, temperature: 0.1, maxTokens: 900 });
+        console.log(`[wechat] ${t.kind}${t.expired ? ' (expired)' : ''} (${t.reason.slice(0, 80)}) ${c.url}`);
+
+        if (t.kind === 'skip') {
+          stats.lowQuality += 1;
+          return;
+        }
+
+        // deadline double-check: the LLM's triage verdict AND the ISO date it
+        // reports are both checked deterministically — a one-off program
+        // with a past deadline never reaches the review list even if the
+        // LLM misclassified. Recurring (annual) programs are exempt: a
+        // closed application window doesn't make a standing program dead.
+        if (t.kind === 'entry' && !t.recurring && (t.expired || isExpired(t.detectedEndsAt))) {
+          stats.lowQuality += 1;
+          console.log(`[wechat] expired one-off entry dropped (deadline ${t.detectedEndsAt ?? 'past per LLM'}) ${c.url}`);
+          return;
+        }
+
+        if (t.kind === 'entry') {
+          const d = await this.extractDraft(c, text, scope, o.qualityFloor);
+          if (d === null) {
+            stats.extractionFailed += 1;
+          } else if (d.quality < o.qualityFloor) {
+            stats.lowQuality += 1;
+          } else {
+            drafts.push(d);
+          }
+          return;
+        }
+
+        // roundup: fan out to the URLs mentioned in the article. The article
+        // itself is NOT an entry. LLM-listed URLs are unioned with a
+        // deterministic plain-text scan (the LLM misses some; the scan
+        // catches them).
+        const mentioned = [...new Set([...t.mentionedUrls, ...extractMentionedUrls(text)])]
+          .map((u) => normalizeUrl(u))
+          .filter((u) => /^https?:\/\//.test(u))
+          // the article's own links are never program pages
+          .filter((u) => !isWechatArticleUrl(u) && !/qq\.com|weixin|wechat/i.test(u))
+          // fan-out children must pass the same DB dedup as article urls,
+          // or every roundup round re-proposes the same projects
+          .filter((u) => !ctx.existingUrls.has(u))
+          .slice(0, 10);
+        if (mentioned.length === 0) {
+          stats.extractionFailed += 1;
+          return;
+        }
+        // URL-level dedup happens against ctx.existingUrls at the top of
+        // search(); roundup children enter that filter via `seen`/dedup in
+        // step 3 only for article URLs, so re-check the child URLs here.
+        const childPages = await mapLimit(mentioned, o.fetchConcurrency, async (u) => {
+          try {
+            return { url: u, text: await pageFn(u) };
+          } catch {
+            return { url: u, text: null as string | null };
+          }
+        });
+        await mapLimit(childPages, o.extractConcurrency, async ({ url, text: childText }) => {
+          if (childText === null || childText.length === 0) {
+            stats.extractionFailed += 1;
+            return;
+          }
+          try {
+            const childHit: RawHit = {
+              title: c.title,
+              url,
+              snippet: `mentioned in WeChat article "${c.title.slice(0, 80)}"`,
+            };
+            const d = await this.extractDraft(childHit, childText, scope, o.qualityFloor);
+            if (d === null) {
+              stats.extractionFailed += 1;
+            } else if (await this.isReallyDead(d)) {
+              stats.lowQuality += 1;
+              console.log(`[search] dead/sports roundup child dropped (deadline ${d.endsAt}) ${url}`);
+            } else if (d.quality < o.qualityFloor) {
+              stats.lowQuality += 1;
+              console.log(`[search] low-quality roundup child (q=${d.quality}) ${url} — ${d.name}`);
+            } else {
+              drafts.push(d);
+            }
+          } catch (err) {
+            stats.extractionFailed += 1;
+            console.warn('[wechat] roundup child extraction failed:', err instanceof Error ? err.message : String(err), `(${url})`);
+          }
+        });
+      } catch (err) {
+        stats.extractionFailed += 1;
+        console.warn('[wechat] triage failed:', err instanceof Error ? err.message : String(err), `(${c.url})`);
+      }
+    });
+    return drafts;
+  }
+
+  /**
+   * Second-opinion freshness/sports check. Runs the freshness judge when the
+   * extracted deadline is already past (catching one-off dead programs
+   * without killing recurring annual ones) OR unconditionally for the sports
+   * gate (a race with a live deadline is still not a review-worthy
+   * opportunity). Only "dead" or "sports" verdicts drop the draft.
+   */
+  private async isReallyDead(d: EntryDraft): Promise<boolean> {
+    if (d.endsAt === null || !isExpired(d.endsAt)) {
+      // live deadline: only the sports gate can drop it
+      try {
+        const { system, user } = freshnessMessages(
+          { title: d.name, url: d.url, snippet: d.summary.slice(0, 200) },
+          d.summary,
+          d.category,
+        );
+        const f = await this.llm.chatJson({ system, user, schema: freshnessSchema, temperature: 0, maxTokens: 400 });
+        return f.status === 'sports';
+      } catch {
+        return false;
+      }
+    }
+    try {
+      const { system, user } = freshnessMessages(
+        { title: d.name, url: d.url, snippet: d.summary.slice(0, 200) },
+        d.summary,
+        d.category,
+      );
+      const f = await this.llm.chatJson({ system, user, schema: freshnessSchema, temperature: 0, maxTokens: 400 });
+      return f.status === 'dead' || f.status === 'sports';
+    } catch {
+      // freshness check failing must not block the draft — the review list
+      // is the safety net
+      return false;
+    }
   }
 
   /** Extracts one draft; null = page unusable (counted as extractionFailed). */
@@ -337,7 +528,7 @@ export function disambiguateNames(drafts: EntryDraft[], existing: ExistingEntryR
 }
 
 /** Fetches a page as plain text; null = unreachable / not HTML / empty. */
-export async function fetchPageText(url: string, timeoutMs: number): Promise<string | null> {
+export async function fetchPageText(url: string, timeoutMs: number, maxLength = 4000): Promise<string | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
@@ -353,7 +544,7 @@ export async function fetchPageText(url: string, timeoutMs: number): Promise<str
     const type = res.headers.get('content-type') ?? '';
     if (!type.includes('html') && !type.includes('text/plain')) return null;
     const html = (await res.text()).slice(0, 500_000);
-    return htmlToText(html).slice(0, 4000) || null;
+    return htmlToText(html).slice(0, maxLength) || null;
   } catch {
     return null;
   } finally {

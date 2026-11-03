@@ -169,22 +169,103 @@ export function extractionMessages(
   pageText: string,
   scope: Scope,
   floor = 60,
+  today = new Date(),
 ): { system: string; user: string } {
   const system = `You extract structured data for a university student-opportunities resource bank.
+Today's date is ${today.toISOString().slice(0, 10)} — use it to judge whether deadlines are still open.
 ${specText(scope)}
 Rules:
 - Use ONLY facts present in the page text. Never invent dates, deadlines, or URLs.
 - summary: 2–3 sentences a student can act on (what it is, who it is for, what it funds/offers).
 - audience: short free-form tags, e.g. ["undergraduates","international students"].
-- startsAt / endsAt: ISO yyyy-mm-dd from the page, or null when absent.
+- startsAt / endsAt: ISO yyyy-mm-dd from the page, or null when absent. endsAt is the application deadline.
 - timeline: application window text from the page, or "" when absent.
 - category: one of on-campus | fellowships | experiential | events | training, judged by the definition above.
 - quality (1–100): relevance to the scope definition (0–40) + completeness (clear dates/deadline and application path: 0–40) + authoritative source (0–20).
+  Score 0 if the opportunity is a ONE-OFF program whose application deadline (shown in the page) is before today's date above, or a SPORTS COMPETITION (athletic tournaments, races, leagues — academic case competitions are fine). Annual/recurring programs with a currently-closed window are NOT expired — score them normally and put the next expected window in the summary when the page mentions it.
   Below ${floor} means the page would waste an admin's review time — score it honestly.
 Respond with a single JSON object and nothing else:
 {"name":"...","summary":"...","audience":["..."],"startsAt":null,"endsAt":null,"timeline":"","category":"fellowships","quality":0}`;
 
   const user = `SEARCH HIT
+title: ${hit.title}
+url: ${hit.url}
+snippet: ${hit.snippet}
+
+PAGE TEXT (may be truncated):
+${pageText}`;
+  return { system, user };
+}
+
+/**
+ * WeChat article triage prompt: decides what a mp.weixin.qq.com article IS
+ * before any extraction happens. Three outcomes:
+ * - "entry": the article itself announces ONE concrete opportunity — the
+ *   article URL becomes the review-list entry (WeChat pages have no official
+ *   program site; the post IS the source).
+ * - "roundup": the article summarizes MULTIPLE projects/opportunities with
+ *   external URLs — the article itself is NOT an entry; the mentioned URLs
+ *   are extracted and fanned out to individual extraction instead.
+ * - "skip": not review-worthy — full-time social recruitment (社招) ads for
+ *   experienced hires, campus events with no student opportunity, marketing,
+ *   news commentary. Part-time/campus recruitment and internships aimed at
+ *   undergraduates or graduate students DO count (兼职/实习/校招 → entry).
+ */
+export function wechatTriageMessages(
+  hit: { title: string; url: string; snippet: string },
+  pageText: string,
+  scope: Scope,
+  today = new Date(),
+): { system: string; user: string } {
+  const system = `You triage WeChat official-account articles for a university student-opportunities resource bank.
+Today's date is ${today.toISOString().slice(0, 10)}. Use it when judging whether a deadline has passed.
+${specText(scope)}
+Classify the article into exactly one of:
+- "entry": announces ONE concrete opportunity (a program, fellowship, summer school, conference, internship or part-time/campus recruitment aimed at undergraduate or graduate students). WeChat articles have no official program site — the article URL itself is the canonical source.
+- "roundup": summarizes MULTIPLE distinct projects/opportunities, each with its own external URL or clearly named program — a resource-bank style list post. The article itself is not an entry.
+- "skip": NOT review-worthy. Skip all of:
+  * DEAD-PAST opportunities — the application deadline shown in the article is before today's date AND the program is a one-off (a specific single edition like "2025 Fellowship" whose round is over). If the deadline shown is past but the program runs EVERY YEAR (a recurring/常驻 program accepting annual applications), keep it as "entry" with expired=false and note the recurring nature in the reason.
+  * SPORTS competitions — athletic tournaments, races, leagues, e-sports (academic case competitions and hackathons are fine).
+  * full-time social/experienced-hire recruitment (社招/全职 requiring work experience), news, marketing, opinion pieces, or anything outside the scope definitions. NOTE: internships (实习), part-time roles (兼职), and campus recruitment (校招) aimed at students DO count as opportunities — only experienced-hire full-time ads are skipped.
+Set "expired" to true ONLY when the article shows a past deadline AND the program is one-off (not recurring); a recurring program with a currently-closed window is NOT expired.
+Set "recurring" to true when the program accepts applications every year (annual programs, standing scholarships).
+Respond with a single JSON object and nothing else:
+{"kind":"entry|roundup|skip","reason":"one short line","expired":false,"recurring":false,"detectedEndsAt":"yyyy-mm-dd or null","mentionedUrls":["..."]}`;
+
+  const user = `ARTICLE
+title: ${hit.title}
+url: ${hit.url}
+snippet: ${hit.snippet}
+
+PAGE TEXT (may be truncated):
+${pageText}
+
+For "roundup": list every external project/program URL that appears in the page text (https://... only, no weixin/qq links). [] when none.
+In "detectedEndsAt", report the application deadline you can see in the text (ISO yyyy-mm-dd), or null when the article shows none.`;
+  return { system, user };
+}
+
+/**
+ * Generic (non-WeChat) page triage: decides review-worthiness against today's
+ * date. One-off programs with a past deadline are dead; recurring/annual
+ * programs survive with a closed window.
+ */
+export function freshnessMessages(
+  hit: { title: string; url: string; snippet: string },
+  pageText: string,
+  scope: Scope,
+  today = new Date(),
+): { system: string; user: string } {
+  const system = `You judge whether a web page describes a still-relevant student opportunity.
+Today's date is ${today.toISOString().slice(0, 10)}.
+Decide:
+- "dead": the page shows an application deadline before today AND the program is a one-off (a specific single edition whose round ended — e.g. "...2025 Fellowship" with a 2025 deadline). 
+- "recurring": the deadline shown is past, but the program runs every year (annual applications, standing scholarship) — still relevant.
+- "live": deadline is today or later, or the page shows no deadline at all.
+- "sports": athletic competitions, races, leagues, e-sports (academic case competitions are NOT sports).
+Respond with a single JSON object and nothing else:
+{"status":"dead|recurring|live|sports","detectedEndsAt":"yyyy-mm-dd or null","reason":"one short line"}`;
+  const user = `PAGE
 title: ${hit.title}
 url: ${hit.url}
 snippet: ${hit.snippet}

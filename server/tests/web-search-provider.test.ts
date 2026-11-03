@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WebSearchProvider, disambiguateNames } from '../src/providers/WebSearchProvider';
+import { WebSearchProvider, disambiguateNames, isExpired } from '../src/providers/WebSearchProvider';
 import { CATEGORY_PROMPTS } from '../src/providers/category-prompts';
 import type { JsonLlm } from '../src/providers/dedup';
 import type { SearchSource } from '../src/providers/search-source';
@@ -13,13 +13,15 @@ import type { EntryDraft, SearchStats } from '../../shared/types';
 
 const PLANNER_MARK = 'plan web searches';
 const JUDGE_MARK = 'deduplication judge';
+const FRESHNESS_MARK = 'still-relevant';
 
-function fakeLlm(paths: { plan?: unknown; classify?: unknown; extract?: unknown }): JsonLlm {
+function fakeLlm(paths: { plan?: unknown; classify?: unknown; extract?: unknown; freshness?: unknown }): JsonLlm {
   return {
     async chatJson(opts) {
       let value: unknown;
       if (opts.system.includes(PLANNER_MARK)) value = paths.plan;
       else if (opts.system.includes(JUDGE_MARK)) value = paths.classify;
+      else if (opts.system.includes(FRESHNESS_MARK)) value = paths.freshness;
       else value = paths.extract;
       return opts.schema.parse(value);
     },
@@ -350,5 +352,255 @@ describe('WebSearchProvider pipeline', () => {
     disambiguateNames(drafts, []);
     expect(drafts[0]!.name).toBe('Young Leaders Fellowship — ylf.org');
     expect(drafts[1]!.name).toBe('young leaders fellowship');
+  });
+
+  it('drops drafts whose extracted deadline already passed (any source)', async () => {
+    // deadline past + freshness judge says one-off dead → dropped
+    const { provider } = makeProvider(
+      {
+        plan: { queries: ['q one'] },
+        classify: { matches: [] },
+        extract: { ...GOOD_DRAFT, endsAt: '2001-01-01' },
+        freshness: { status: 'dead', detectedEndsAt: '2001-01-01', reason: 'one-off, round over' },
+      },
+      [HIT_A],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('fellowships', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats).toMatchObject({ lowQuality: 1, returned: 0 });
+  });
+
+  it('keeps a recurring (annual) program whose current window already closed', async () => {
+    const { provider } = makeProvider(
+      {
+        plan: { queries: ['q one'] },
+        classify: { matches: [] },
+        extract: { ...GOOD_DRAFT, endsAt: '2001-01-01' },
+        freshness: { status: 'recurring', detectedEndsAt: '2001-01-01', reason: 'annual program' },
+      },
+      [HIT_A],
+    );
+    const { ctx } = makeCtx();
+    const drafts = await provider.search('fellowships', 'all', ctx);
+    expect(drafts).toHaveLength(1);
+  });
+
+  it('drops sports competitions even with a live deadline', async () => {
+    const { provider } = makeProvider(
+      {
+        plan: { queries: ['q one'] },
+        classify: { matches: [] },
+        extract: { ...GOOD_DRAFT, endsAt: '2099-01-01' },
+        freshness: { status: 'sports', detectedEndsAt: null, reason: 'athletic race' },
+      },
+      [HIT_A],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('fellowships', 'all', ctx);
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats).toMatchObject({ lowQuality: 1 });
+  });
+
+  it('keeps drafts whose deadline is in the future', async () => {
+    const { provider } = makeProvider(
+      { plan: { queries: ['q one'] }, classify: { matches: [] }, extract: { ...GOOD_DRAFT, endsAt: '2099-01-01' } },
+      [HIT_A],
+    );
+    const { ctx } = makeCtx();
+    const drafts = await provider.search('fellowships', 'all', ctx);
+    expect(drafts).toHaveLength(1);
+  });
+});
+
+describe('isExpired', () => {
+  it('is false for null/undefined/empty deadlines', () => {
+    expect(isExpired(null)).toBe(false);
+    expect(isExpired(undefined)).toBe(false);
+    expect(isExpired('')).toBe(false);
+  });
+
+  it('is true for a date before today, false for today or later', () => {
+    expect(isExpired('2001-01-01')).toBe(true);
+    expect(isExpired('2099-12-31')).toBe(false);
+  });
+
+  it('respects an injected today (timezone-independent tests)', () => {
+    expect(isExpired('2026-11-02', new Date('2026-11-03T10:00:00+08:00'))).toBe(true);
+    expect(isExpired('2026-11-03', new Date('2026-11-03T10:00:00+08:00'))).toBe(false);
+    expect(isExpired('2026-11-04', new Date('2026-11-03T10:00:00+08:00'))).toBe(false);
+  });
+});
+
+describe('WebSearchProvider wechat branch', () => {
+  const TRIAGE_MARK = 'triage WeChat';
+
+  const WECHAT_HIT: RawHit = {
+    title: 'Impact Circle project roundup',
+    url: 'https://mp.weixin.qq.com/s/roundup1',
+    snippet: 'WeChat article',
+  };
+
+  /** WeChat-round provider: source kind wechat, triage/extract faked by system-prompt mark. */
+  function makeWechatProvider(
+    paths: {
+      triage: unknown | ((user: string) => unknown);
+      extract: unknown;
+      freshness?: unknown;
+    },
+    hits: RawHit[],
+    pageFetcher?: (url: string) => Promise<string | null>,
+  ) {
+    const llm: JsonLlm = {
+      async chatJson(opts) {
+        let value: unknown;
+        if (opts.system.includes(PLANNER_MARK)) value = { queries: ['wechat programs'] };
+        else if (opts.system.includes(JUDGE_MARK)) value = { matches: [] };
+        else if (opts.system.includes(FRESHNESS_MARK)) value = paths.freshness;
+        else if (opts.system.includes(TRIAGE_MARK)) {
+          value = typeof paths.triage === 'function' ? (paths.triage as (u: string) => unknown)(opts.user) : paths.triage;
+        } else value = paths.extract;
+        return opts.schema.parse(value);
+      },
+    };
+    const source: SearchSource = { kind: 'wechat', search: async () => hits };
+    const fetcher =
+      pageFetcher ?? (async (url: string) => `Page text about ${url} with link https://program.example.org/one and https://program.example.org/two`);
+    const provider = new WebSearchProvider(llm, source, { qualityFloor: 70, pageFetcher: fetcher });
+    return provider;
+  }
+
+  it('entry article becomes a review draft whose url is the article itself', async () => {
+    const provider = makeWechatProvider(
+      { triage: { kind: 'entry', reason: 'one program', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: [] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(1);
+    expect(drafts[0]!.url).toBe(WECHAT_HIT.url);
+    expect(holder.stats).toMatchObject({ returned: 1 });
+  });
+
+  it('an entry whose detected deadline already passed is dropped deterministically', async () => {
+    const provider = makeWechatProvider(
+      {
+        triage: { kind: 'entry', reason: 'one program', expired: false, recurring: false, detectedEndsAt: '2020-01-01', mentionedUrls: [] },
+        extract: GOOD_DRAFT,
+      },
+      [WECHAT_HIT],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    // LLM said "entry", but the ISO deadline it reported is long past and the
+    // program is not recurring — the deterministic gate drops it.
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats).toMatchObject({ lowQuality: 1, returned: 0 });
+  });
+
+  it('a recurring entry with a closed window survives the deterministic gate', async () => {
+    const provider = makeWechatProvider(
+      {
+        triage: { kind: 'entry', reason: 'annual program', expired: false, recurring: true, detectedEndsAt: '2020-01-01', mentionedUrls: [] },
+        extract: GOOD_DRAFT,
+      },
+      [WECHAT_HIT],
+    );
+    const { ctx } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+    expect(drafts).toHaveLength(1);
+  });
+
+  it('an entry the LLM flags expired is dropped even without a detected date', async () => {
+    const provider = makeWechatProvider(
+      { triage: { kind: 'entry', reason: 'deadline passed', expired: true, recurring: false, detectedEndsAt: null, mentionedUrls: [] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats).toMatchObject({ lowQuality: 1, returned: 0 });
+  });
+
+  it('roundup fans out to mentioned urls; the article itself is NOT a draft', async () => {
+    const provider = makeWechatProvider(
+      { triage: { kind: 'roundup', reason: 'multi', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: ['https://proj-a.org/x'] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+      async (url) =>
+        url === WECHAT_HIT.url
+          ? 'roundup text https://proj-b.org/y more'
+          : `program page ${url}`,
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    // LLM's proj-a + text-scan's proj-b; article url absent
+    const urls = drafts.map((d) => d.url).sort();
+    expect(urls).toEqual(['https://proj-a.org/x', 'https://proj-b.org/y']);
+    expect(holder.stats?.returned).toBe(2);
+  });
+
+  it('roundup children already in the DB are dropped before fetching', async () => {
+    const fetched: string[] = [];
+    const provider = makeWechatProvider(
+      { triage: { kind: 'roundup', reason: 'multi', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: ['https://known.org/a'] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+      async (url) => {
+        fetched.push(url);
+        return `page ${url}`;
+      },
+    );
+    const { ctx, holder } = makeCtx({ existingUrls: ['https://known.org/a'] });
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(fetched).not.toContain('https://known.org/a');
+    expect(holder.stats?.returned).toBe(0);
+  });
+
+  it('skip (experienced-hire recruitment) drops the article without extraction', async () => {
+    const provider = makeWechatProvider(
+      { triage: { kind: 'skip', reason: 'experienced-hire ad', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: [] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats).toMatchObject({ lowQuality: 1, returned: 0 });
+  });
+
+  it('roundup with zero resolvable children counts as extractionFailed', async () => {
+    const provider = makeWechatProvider(
+      { triage: { kind: 'roundup', reason: 'multi', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: [] }, extract: GOOD_DRAFT },
+      [WECHAT_HIT],
+      async () => 'text with no urls at all',
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats?.extractionFailed).toBeGreaterThanOrEqual(1);
+  });
+
+  it('a roundup child whose extracted deadline already passed is dropped', async () => {
+    const provider = makeWechatProvider(
+      {
+        triage: { kind: 'roundup', reason: 'multi', expired: false, recurring: false, detectedEndsAt: null, mentionedUrls: [] },
+        extract: { ...GOOD_DRAFT, endsAt: '2019-06-01' },
+        freshness: { status: 'dead', detectedEndsAt: '2019-06-01', reason: 'one-off' },
+      },
+      [WECHAT_HIT],
+      async (url) => (url === WECHAT_HIT.url ? 'roundup https://proj-old.org/x' : `program page ${url}`),
+    );
+    const { ctx, holder } = makeCtx();
+    const drafts = await provider.search('programs', 'all', ctx);
+
+    expect(drafts).toHaveLength(0);
+    expect(holder.stats?.lowQuality).toBeGreaterThanOrEqual(1);
   });
 });
