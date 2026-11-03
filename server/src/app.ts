@@ -12,6 +12,7 @@ import {
 import { searchRoutes, sweepStaleJobs } from './routes/search';
 import { updatesRoutes } from './routes/updates';
 import { streamRoutes } from './routes/stream';
+import { wechatWhitelistRoutes } from './routes/wechat-whitelist';
 import { createBus, type Bus } from './bus';
 import type { SearchProvider, UpdateChecker } from './providers/types';
 import type { AuthDeps } from './auth';
@@ -58,6 +59,8 @@ export function createApp(deps: AppDeps): Express {
   app.use(authRoutes(auth));
 
   // ── admin-only ────────────────────────────────────────────────────────
+  app.use(wechatWhitelistRoutes(db, bus)); // GET/PUT /api/wechat-whitelist (admin)
+
   app.get('/api/summary', admin, (_req, res) => {
     const reviewCount = (
       db.prepare("SELECT COUNT(*) AS n FROM entries WHERE status = 'review'").get() as { n: number }

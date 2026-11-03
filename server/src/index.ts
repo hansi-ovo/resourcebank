@@ -46,9 +46,32 @@ function main(): void {
   // can be pinned to 'off' (playwright does exactly that) to force the mock.
   const llm = makeLlm();
   const liveSearch = llm !== null && searchSourceReady();
+  // WeChat whitelist is live-managed (settings table) — read per round, not
+  // at boot, so admin edits take effect on the next search without restart.
+  // Seed it once so the very first round already filters.
+  db.prepare(
+    "INSERT INTO settings (key, value) VALUES ('wechat_whitelist', ?) ON CONFLICT(key) DO NOTHING",
+  ).run(JSON.stringify(config.wechatWhitelistSeed));
+  const readWhitelist = (): string[] => {
+    try {
+      const row = db.prepare("SELECT value FROM settings WHERE key = 'wechat_whitelist'").get() as
+        | { value: string }
+        | undefined;
+      if (row === undefined) return config.wechatWhitelistSeed;
+      const parsed: unknown = JSON.parse(row.value);
+      return Array.isArray(parsed)
+        ? parsed.filter((x): x is string => typeof x === 'string' && x.trim().length > 0)
+        : config.wechatWhitelistSeed;
+    } catch {
+      return config.wechatWhitelistSeed;
+    }
+  };
+
   const provider: SearchProvider =
     llm && liveSearch
-      ? new WebSearchProvider(llm, createSearchSource(), { qualityFloor: config.searchQualityFloor })
+      ? new WebSearchProvider(llm, createSearchSource({ wechatWhitelist: readWhitelist }), {
+          qualityFloor: config.searchQualityFloor,
+        })
       : new MockSearchProvider();
 
   // Same gate as search: the real update checker needs the LLM gateway.
