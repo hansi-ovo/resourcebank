@@ -304,6 +304,24 @@ export class WebSearchProvider implements SearchProvider {
 
     await mapLimit(fetchable, o.extractConcurrency, async ({ c, text }) => {
       try {
+        // non-WeChat pages that slipped in via whitelist account targeting
+        // (official sites, Notion, link hubs) skip WeChat triage — the
+        // generic extraction + freshness gates apply
+        if (!isWechatArticleUrl(c.url)) {
+          const d = await this.extractDraft(c, text, scope, o.qualityFloor);
+          if (d === null) {
+            stats.extractionFailed += 1;
+          } else if (await this.isReallyDead(d)) {
+            stats.lowQuality += 1;
+            console.log(`[wechat] dead/sports account page dropped ${c.url}`);
+          } else if (d.quality < o.qualityFloor) {
+            stats.lowQuality += 1;
+          } else {
+            drafts.push(d);
+          }
+          return;
+        }
+
         const { system, user } = wechatTriageMessages(c, text, scope);
         const t = await this.llm.chatJson({ system, user, schema: triageSchema, temperature: 0.1, maxTokens: 900 });
         console.log(`[wechat] ${t.kind}${t.expired ? ' (expired)' : ''} (${t.reason.slice(0, 80)}) ${c.url}`);
