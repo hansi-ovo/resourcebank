@@ -31,16 +31,25 @@ function loadDotEnv(): void {
 
 loadDotEnv();
 
-export type SearchSource = 'off' | 'gateway' | 'tavily' | 'searxng';
+export type SearchSourceKind = 'gateway' | 'tavily' | 'searxng' | 'wechat';
+export type SearchSource = 'off' | SearchSourceKind;
 
-function parseSearchSource(v: string | undefined): SearchSource {
-  const s = (v || 'off').trim().toLowerCase();
-  return s === 'gateway' || s === 'tavily' || s === 'searxng' ? s : 'off';
+const KNOWN_SOURCES = new Set(['gateway', 'tavily', 'searxng', 'wechat']);
+
+function parseSearchSource(v: string | undefined): SearchSource[] {
+  // comma-separated combination: "tavily,wechat" merges both channels into
+  // one round (CompositeSearchSource). Unknown tokens are dropped.
+  const raw = (v || 'off').trim().toLowerCase();
+  if (!raw || raw === 'off') return [];
+  const parts = raw
+    .split(',')
+    .map((s) => s.trim())
+    .filter((s): s is SearchSource => KNOWN_SOURCES.has(s));
+  return [...new Set(parts)];
 }
 
 const searchSourceEnv = parseSearchSource(process.env.SEARCH_SOURCE);
 const llmConfigured = Boolean(process.env.LLM_API_KEY && process.env.LLM_MODEL);
-
 export const config = {
   port: Number(process.env.RB_PORT || process.env.PORT || 8787),
   /**
@@ -56,20 +65,31 @@ export const config = {
 
   /**
    * Real web search (Steps 0–1 of the search upgrade):
-   * - `searchSource: 'off'` (default) keeps the MockSearchProvider — tests and
-   *   demos never touch the network.
+   * - `searchSources: []` (default, SEARCH_SOURCE unset/off) keeps the
+   *   MockSearchProvider — tests and demos never touch the network.
    * - `'gateway'` uses the DKU NewAPI gateway: an LLM for extraction plus an
    *   LLM search model (web-connected) for finding candidate pages.
-   * - `'tavily'` / `'searxng'` are alternative search sources; the LLM is
-   *   still the gateway's, so LLM_API_KEY is required for any real source.
+   * - `'tavily'` / `'searxng'` / `'wechat'` are alternative search sources;
+   *   the LLM is still the gateway's, so LLM_API_KEY is required for any
+   *   real source. Comma-combine them ("tavily,wechat") to merge both
+   *   channels into one round via CompositeSearchSource.
    */
-  searchSource: searchSourceEnv,
+  searchSources: searchSourceEnv,
+  /**
+   * WeChat official-account whitelist (names). Sogou/Tavily rounds search
+   * these accounts' articles specifically; articles from other accounts are
+   * dropped before triage. Managed live via /api/wechat-whitelist.
+   */
+  wechatWhitelistSeed: (process.env.WECHAT_WHITELIST || 'Impact Circle,Microcosmos志愿者营地')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean),
   /**
    * Stale-job sweep threshold. Real pipelines (Tavily + LLM extraction)
    * legitimately run for minutes — 90s would kill live jobs mid-flight.
    */
   searchJobTimeoutMs: Number(
-    process.env.SEARCH_JOB_TIMEOUT_MS || (searchSourceEnv !== 'off' && llmConfigured ? 900_000 : 120_000),
+    process.env.SEARCH_JOB_TIMEOUT_MS || (searchSourceEnv.length > 0 && llmConfigured ? 900_000 : 120_000),
   ),
   llm: {
     baseUrl: (process.env.LLM_BASE_URL || 'https://aichat.dukekunshan.edu.cn:3443/v1').replace(/\/+$/, ''),
@@ -93,18 +113,24 @@ export function llmReady(): boolean {
   return config.llm.apiKey.length > 0 && config.llm.model.length > 0;
 }
 
-/** True when the chosen search source has all its credentials. */
+/** True when every configured search source has its credentials. */
 export function searchSourceReady(): boolean {
-  switch (config.searchSource) {
-    case 'gateway':
-      return llmReady();
-    case 'tavily':
-      return llmReady() && config.tavilyApiKey.length > 0;
-    case 'searxng':
-      return llmReady() && config.searxngUrl.length > 0;
-    default:
-      return false;
-  }
+  if (config.searchSources.length === 0) return false;
+  return config.searchSources.every((s) => {
+    switch (s) {
+      case 'gateway':
+        return llmReady();
+      case 'tavily':
+        return llmReady() && config.tavilyApiKey.length > 0;
+      case 'searxng':
+        return llmReady() && config.searxngUrl.length > 0;
+      case 'wechat':
+        // Sogou needs no credentials; Tavily is the auxiliary channel.
+        return llmReady() && config.tavilyApiKey.length > 0;
+      default:
+        return false;
+    }
+  });
 }
 
 function parseFastMode(v: string | undefined): number {
