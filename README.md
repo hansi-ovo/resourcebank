@@ -1,15 +1,37 @@
-# DKU Leadership Resource Bank
+﻿# DKU Leadership Resource Bank
 
 A two-face web application for Duke Kunshan University Leadership Programs:
 
 - **Display app** (`/`): animated English portal — hero page with a clone-flight
-  transition into a fully scrollable resource catalog with live updates (SSE).
+  transition into a fully scrollable resource catalog with live updates (SSE),
+  plus a top-right keyword search box on `/resources` (program name,
+  eligibility, overview — multi-term AND match, sections without matches hide).
 - **Admin app** (`/admin`): real web search (Tavily + campus LLM gateway behind
   a provider interface; mock fallback when unconfigured), review workflow
   (approve/remove/edit), weekly update checking, and content management synced
   live to the display site.
 
 English only. Light theme. Logo top-left everywhere.
+
+Admin table interactions:
+
+- **Eligibility (audience) editing** — one action saves: press Enter or click
+  Save; both commit any pending tag and persist the list (Escape cancels).
+- **Export selected** — check rows on the Review list or Content management,
+  then `Export selected` downloads a UTF-8 (BOM) CSV spreadsheet of the checked
+  entries (client sheet columns + admin Notes).
+- **Manual add auto-recognition** — `POST /api/import-url` fetches a pasted
+  link (following redirects, including the lnkd.in / inkd.in interstitial
+  embedded-target hop and og:image extraction) and LLM-fills the form's
+  Program / Category / Timeline / Web link / Eligibility / Overview / Image
+  fields for the admin to review and confirm. Unreachable or login-walled
+  pages return a readable 4xx; the admin can always fill the form by hand.
+- **Local image upload** — the Image URL fields (manual add form + inline
+  edits) accept both a pasted link and a local JPG/PNG/WebP/GIF file
+  (`POST /api/uploads`, admin-only, ≤5 MB, magic-byte validated). Files are
+  stored next to the SQLite DB (`<data>/uploads/`) under server-generated
+  names and served publicly at `/api/uploads/<name>` (immutable cache);
+  the DB keeps that servable path as the entry's image URL.
 
 ## Deployer quick start (university IT)
 
@@ -61,7 +83,7 @@ Useful scripts:
 
 ```bash
 npm run test -w server          # Vitest (63 tests: state machine, dedupe, scoring, auth, SSE, LLM JSON, search pipeline)
-npx playwright test             # E2E (28 tests; ISOLATED servers :8790/:5174 + throwaway DB — never touches your dev data)
+npx playwright test             # E2E (37 tests; ISOLATED servers :8799/:5199 + throwaway DB - never touches your dev data)
 npm run build                   # typecheck + build server (esbuild ESM) + client (Vite)
 node scripts/acceptance.mjs     # API lifecycle walk (login → search → edit → approve → withdraw → SSE)
 node scripts/llm-smoke.mjs      # LLM gateway smoke test (lists models, one chat call)
