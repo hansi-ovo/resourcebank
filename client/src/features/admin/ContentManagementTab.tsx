@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/Toast';
 import { EditableCell, InlineInput, TagInput } from '@/components/ui/InlineEditors';
 import { CategoryPicker } from '@/components/ui/CategoryPicker';
 import { FuseAction } from '@/components/ui/FuseAction';
+import { downloadEntriesCsv } from '@/lib/exportCsv';
 import { useAdminSummary } from './ReviewLayout';
 import { cancelFuseAction, hiddenIds, onQueueChange, scheduleFuseAction } from './pendingActions';
 import { domain, formatDateRange } from '@/lib/format';
@@ -28,6 +29,7 @@ export function ContentManagementTab() {
   const toast = useToast();
   const { refresh } = useAdminSummary();
   const [rows, setRows] = useState<Entry[] | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
   const [editing, setEditing] = useState<{ id: number; field: EditableField } | null>(null);
   const [query, setQuery] = useState('');
   const hidden = useHiddenIds();
@@ -65,6 +67,11 @@ export function ContentManagementTab() {
 
   function withdraw(id: number) {
     scheduleFuseAction('withdraw', id);
+    setSelected((s) => {
+      const next = new Set(s);
+      next.delete(id);
+      return next;
+    });
     toast.show({
       kind: 'withdrawn',
       message: 'Withdrawn from the public site',
@@ -79,6 +86,18 @@ export function ContentManagementTab() {
         ? rows.filter((r) => r.name.toLowerCase().includes(query.trim().toLowerCase()))
         : rows;
   const visible = searched === null ? null : searched.filter((r) => !hidden.has(r.id));
+  const allChecked = visible !== null && visible.length > 0 && selected.size === visible.length;
+
+  /** Export the checked rows (selection bar button) to a CSV file. */
+  function exportSelected() {
+    const chosen = (visible ?? []).filter((r) => selected.has(r.id));
+    if (chosen.length === 0) return;
+    downloadEntriesCsv('published', chosen);
+    toast.show({
+      kind: 'info',
+      message: `Exported ${chosen.length} ${chosen.length > 1 ? 'items' : 'item'} to CSV`,
+    });
+  }
 
   return (
     <section
@@ -112,36 +131,91 @@ export function ContentManagementTab() {
             : 'No published programs yet. Approve items from the Review list.' /* copy deck */}
         </p>
       ) : (
-        <div className="review-table-scroll min-h-[200px] flex-1 rounded-xl border border-mist bg-surface">
-          <table className="w-full min-w-[1460px] border-collapse text-left">
-            <thead>
-              <tr className="text-[13px] font-semibold text-ink-soft">
-                {[
-                  'Program',
-                  'Category',
-                  'Application Timeline',
-                  'Web Link',
-                  'Eligibility',
-                  'Overview',
-                  'Image URL',
-                  'Notes',
-                  'Withdraw',
-                ].map((h) => (
+        <>
+          {selected.size > 0 ? (
+            <div className="mb-3 flex items-center gap-3 rounded-xl border border-mist bg-surface px-4 py-3">
+              <span className="num text-[14px] font-semibold text-ink">{selected.size} selected</span>
+              <button
+                type="button"
+                onClick={exportSelected}
+                className="rounded-lg px-4 py-2 text-[14px] font-semibold text-white transition-all duration-150 hover:brightness-110 active:scale-[0.98] focus-visible:outline-2"
+                style={{ background: 'var(--ramp-mid)', outlineColor: 'var(--focus)' }}
+                aria-label={`Export ${selected.size} selected items to a spreadsheet file`}
+              >
+                Export selected
+              </button>
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={() => setSelected(new Set())}
+                className="rounded-lg border border-mist bg-surface px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-soft/40 focus-visible:outline-2"
+                style={{ outlineColor: 'var(--focus)' }}
+              >
+                Clear selection
+              </button>
+            </div>
+          ) : null}
+
+          <div className="review-table-scroll min-h-[200px] flex-1 rounded-xl border border-mist bg-surface">
+            <table className="w-full min-w-[1500px] border-collapse text-left">
+              <thead>
+                <tr className="text-[13px] font-semibold text-ink-soft">
                   <th
-                    key={h}
                     scope="col"
-                    className="sticky z-10 border-b border-mist bg-surface px-3 py-3"
-                    style={{ top: 0 }}
+                    className="sticky z-10 w-10 border-b border-mist bg-surface px-3 py-3"
+                    style={{ top: 0, left: 0 }}
                   >
-                    {h}
+                    <input
+                      type="checkbox"
+                      aria-label="Select all"
+                      checked={allChecked}
+                      onChange={(e) =>
+                        setSelected(e.target.checked ? new Set((visible ?? []).map((r) => r.id)) : new Set())
+                      }
+                      className="h-4 w-4 accent-[color:var(--focus)]"
+                    />
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-mist">
-              {visible.map((e) => (
-                <tr key={e.id} className="group/row align-top hover:bg-canvas/60">
-                  {editing?.id === e.id && editing.field === 'name' ? (
+                  {[
+                    'Program',
+                    'Category',
+                    'Application Timeline',
+                    'Web Link',
+                    'Eligibility',
+                    'Overview',
+                    'Image URL',
+                    'Notes',
+                    'Withdraw',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className="sticky z-10 border-b border-mist bg-surface px-3 py-3"
+                      style={{ top: 0 }}
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-mist">
+                {visible.map((e) => (
+                  <tr key={e.id} className="group/row align-top hover:bg-canvas/60">
+                    <td className="sticky-col px-3 py-2">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${e.name}`}
+                        checked={selected.has(e.id)}
+                        onChange={(ev) => {
+                          const next = new Set(selected);
+                          if (ev.target.checked) next.add(e.id);
+                          else next.delete(e.id);
+                          setSelected(next);
+                        }}
+                        className="mt-3 h-4 w-4 accent-[color:var(--focus)]"
+                      />
+                    </td>
+
+                    {editing?.id === e.id && editing.field === 'name' ? (
                     <td className="min-w-[170px] p-2">
                       <InlineInput
                         initial={e.name}
@@ -266,6 +340,7 @@ export function ContentManagementTab() {
                       <InlineInput
                         initial={e.imageUrl ?? ''}
                         ariaLabel="Edit image URL"
+                        imageUpload
                         onSave={(v) => {
                           setEditing(null);
                           void patch(e.id, { imageUrl: v }); // '' clears
@@ -313,11 +388,12 @@ export function ContentManagementTab() {
                       />
                     </div>
                   </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                 </tr>
+               ))}
+             </tbody>
+           </table>
+         </div>
+        </>
       )}
 
       <p className="mt-6 text-[13px] text-ink-soft">

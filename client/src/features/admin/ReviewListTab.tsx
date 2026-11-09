@@ -4,6 +4,7 @@ import { useToast } from '@/components/ui/Toast';
 import { EditableCell, InlineInput, TagInput } from '@/components/ui/InlineEditors';
 import { CategoryPicker } from '@/components/ui/CategoryPicker';
 import { FuseAction } from '@/components/ui/FuseAction';
+import { downloadEntriesCsv } from '@/lib/exportCsv';
 import { useAdminSummary } from './ReviewLayout';
 import { cancelFuseAction, hiddenIds, onQueueChange, scheduleFuseAction } from './pendingActions';
 import { domain, formatDateRange } from '@/lib/format';
@@ -92,6 +93,17 @@ export function ReviewListTab() {
   const visible = searched === null ? null : searched.filter((r) => !hidden.has(r.id));
   const allChecked = visible !== null && visible.length > 0 && selected.size === visible.length;
 
+  /** Export the checked rows (selection bar button) to a CSV file. */
+  function exportSelected() {
+    const chosen = (visible ?? []).filter((r) => selected.has(r.id));
+    if (chosen.length === 0) return;
+    downloadEntriesCsv('review', chosen);
+    toast.show({
+      kind: 'info',
+      message: `Exported ${chosen.length} ${chosen.length > 1 ? 'items' : 'item'} to CSV`,
+    });
+  }
+
   return (
     <section
       aria-label="Review list"
@@ -143,6 +155,16 @@ export function ReviewListTab() {
                 onCommit={() => act('remove', [...selected])}
                 onUndo={() => cancelFuseAction([...selected])}
               />
+              <span className="flex-1" />
+              <button
+                type="button"
+                onClick={exportSelected}
+                className="rounded-lg border border-mist bg-surface px-4 py-2 text-[14px] font-semibold text-ink transition-colors hover:border-ink-soft/40 focus-visible:outline-2"
+                style={{ outlineColor: 'var(--focus)' }}
+                aria-label={`Export ${selected.size} selected items to a spreadsheet file`}
+              >
+                Export selected
+              </button>
             </div>
           ) : null}
 
@@ -330,6 +352,7 @@ export function ReviewListTab() {
                         <InlineInput
                           initial={e.imageUrl ?? ''}
                           ariaLabel="Edit image URL"
+                          imageUpload
                           onSave={(v) => {
                             setEditing(null);
                             void patch(e.id, { imageUrl: v }); // '' clears
