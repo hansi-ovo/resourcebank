@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '@/lib/api';
 import { useEventStream } from '@/lib/sse';
 import { useReducedMotion } from '@/lib/motion';
@@ -27,8 +27,37 @@ export function ContentPage() {
   const [sections, setSections] = useState<PublishedSection[] | null>(null);
   const [active, setActive] = useState<string>(CATEGORIES[0].id);
   const [modalEntry, setModalEntry] = useState<Entry | null>(null);
+  const [query, setQuery] = useState('');
   const reduced = useReducedMotion();
   const scrollRefs = useRef(new Map<string, HTMLElement>());
+
+  /**
+   * Search box filter (task request): multi-term keyword match over program
+   * name, eligibility tags (audience), overview, timeline, and the category
+   * label. Every whitespace-separated term must match somewhere (AND).
+   */
+  const terms = useMemo(() => query.trim().toLowerCase().split(/\s+/).filter(Boolean), [query]);
+  const filtering = terms.length > 0;
+  const filteredSections = useMemo(() => {
+    if (!sections || !filtering) return sections;
+    return sections
+      .map((s) => ({
+        ...s,
+        entries: s.entries.filter((e) => {
+          const haystack =
+            `${e.name} ${e.summary} ${e.audience.join(' ')} ${e.timeline ?? ''} ${s.category.label}`.toLowerCase();
+          return terms.every((t) => haystack.includes(t));
+        }),
+      }))
+      .filter((s) => s.entries.length > 0);
+  }, [sections, filtering, terms]);
+  const matchCount = filteredSections?.reduce((n, s) => n + s.entries.length, 0) ?? 0;
+  /** Sections currently rendered (drives TOC dimming + effect deps). */
+  const visibleIds = useMemo(
+    () => new Set((filtering ? filteredSections : sections)?.map((s) => s.category.id) ?? []),
+    [filtering, filteredSections, sections],
+  );
+  const visibleIdsKey = useMemo(() => [...visibleIds].join(','), [visibleIds]);
 
   const load = useCallback(async () => {
     try {
@@ -96,7 +125,7 @@ export function ContentPage() {
     );
     for (const el of scrollRefs.current.values()) observer.observe(el);
     return () => observer.disconnect();
-  }, [sections]);
+  }, [sections, visibleIdsKey]);
 
   // deep link #<categoryId> scrolls once sections exist (respecting reduced
   // motion) and sets active TOC; hold scroll-spy during the flight
@@ -163,7 +192,7 @@ export function ContentPage() {
       });
     });
     return () => ctx.revert();
-  }, [sections, reduced]);
+  }, [sections, reduced, visibleIdsKey]);
 
   const jumpTo = useCallback(
     (id: string) => {
@@ -183,11 +212,42 @@ export function ContentPage() {
     <div className="content-root" data-content-page>
       <header className="content-header">
         <Logo />
+        <input
+          type="search"
+          className="content-search"
+          aria-label="Search programs"
+          placeholder="Search programs, eligibility…"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+        />
       </header>
       <main className="content-main">
+        {filtering && sections !== null ? (
+          <p className="content-search-status" aria-live="polite">
+            {matchCount > 0 ? (
+              <>
+                {matchCount} {matchCount === 1 ? 'program matches' : 'programs match'} “{query.trim()}”
+              </>
+            ) : (
+              <>
+                No programs match “{query.trim()}”.
+                <button
+                  type="button"
+                  className="content-search-clear"
+                  onClick={() => setQuery('')}
+                >
+                  Clear search
+                </button>
+              </>
+            )}
+          </p>
+        ) : null}
         {CATEGORIES.map((cat) => {
-          const data = sections?.find((s) => s.category.id === cat.id) ?? null;
-          const empty = sections !== null && (data?.entries.length ?? 0) === 0;
+          // while searching, work from the filtered set and hide empty sections
+          const source = filtering ? filteredSections : sections;
+          const data = source?.find((s) => s.category.id === cat.id) ?? null;
+          if (filtering && sections !== null && !data) return null;
+          const empty = !filtering && sections !== null && (data?.entries.length ?? 0) === 0;
           const nextNonEmpty = CATEGORIES.find(
             (c, i) =>
               i > CATEGORIES.indexOf(cat) &&
@@ -253,20 +313,7 @@ export function ContentPage() {
                       style={{ ['--cat' as string]: cat.tint }}
                       onClick={() => setModalEntry(e)}
                     >
-                      <span className="card-image">
-                        {e.imageUrl ? (
-                          <img
-                            src={displayImageUrl(e.imageUrl) ?? undefined}
-                            alt={e.name}
-                            loading={i < 3 ? 'eager' : 'lazy'}
-                            fetchPriority={i === 0 ? 'high' : undefined}
-                          />
-                        ) : (
-                          <span className="card-fallback" aria-hidden="true">
-                            {e.name.slice(0, 1)}
-                          </span>
-                        )}
-                      </span>
+                      <CardImage entry={e} eager={i < 3} highPriority={i === 0} />
                       <span className="card-name">{e.name}</span>
                       <span className="card-meta">{e.audience.slice(0, 3).join(', ')}</span>
                     </button>
@@ -278,10 +325,44 @@ export function ContentPage() {
         })}
       </main>
 
-      <SectionTOC active={active} onJump={jumpTo} />
+      <SectionTOC active={active} onJump={jumpTo} enabled={filtering && sections !== null ? visibleIds : null} />
 
       {modalEntry ? <EntryModal entry={modalEntry} onClose={() => setModalEntry(null)} /> : null}
     </div>
+  );
+}
+
+/**
+ * Card art with graceful degradation: a dead image (uploaded file removed,
+ * external link rotted) falls back to the tonal first-letter tile instead
+ * of the browser's broken-image icon. Broken state resets when the entry's
+ * image URL changes (SSE live swaps).
+ */
+function CardImage({ entry, eager, highPriority }: { entry: Entry; eager: boolean; highPriority: boolean }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    setBroken(false);
+  }, [entry.imageUrl]);
+
+  if (!entry.imageUrl || broken) {
+    return (
+      <span className="card-image">
+        <span className="card-fallback" aria-hidden="true">
+          {entry.name.slice(0, 1)}
+        </span>
+      </span>
+    );
+  }
+  return (
+    <span className="card-image">
+      <img
+        src={displayImageUrl(entry.imageUrl) ?? undefined}
+        alt={entry.name}
+        loading={eager ? 'eager' : 'lazy'}
+        fetchPriority={highPriority ? 'high' : undefined}
+        onError={() => setBroken(true)}
+      />
+    </span>
   );
 }
 
@@ -289,8 +370,17 @@ export function ContentPage() {
  *  vertical rail with category-tinted nodes and always-visible labels.
  *  Mounts with a top-to-bottom stagger fade on first interaction-safe
  *  render (常驻: stays visible afterwards); click/Enter jumps; scroll-spy
- *  sets aria-current + enlarges the active node. */
-function SectionTOC({ active, onJump }: { active: string; onJump: (id: string) => void }) {
+ *  sets aria-current + enlarges the active node. While a search is active,
+ *  sections with zero matches are dimmed and non-clickable. */
+function SectionTOC({
+  active,
+  onJump,
+  enabled,
+}: {
+  active: string;
+  onJump: (id: string) => void;
+  enabled: Set<string> | null;
+}) {
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     const id = window.requestAnimationFrame(() => setMounted(true));
@@ -306,6 +396,7 @@ function SectionTOC({ active, onJump }: { active: string; onJump: (id: string) =
             type="button"
             className={`toc-item ${active === c.id ? 'is-active' : ''}`}
             aria-current={active === c.id ? 'true' : undefined}
+            disabled={enabled ? !enabled.has(c.id) : false}
             onClick={() => onJump(c.id)}
             style={{ transitionDelay: mounted ? `${i * 70}ms` : '0ms' }}
           >

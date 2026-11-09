@@ -172,18 +172,35 @@ export function ShowcaseWheel({ reduced }: { reduced: boolean }) {
         const img = el.querySelector('.showcase-wheel-img') as HTMLElement | null;
         if (img) {
           img.style.setProperty('--cat', item.tint);
-          const imgEl = img.querySelector('img');
-          const fbEl = img.querySelector('.showcase-wheel-fallback');
-          if (item.image) {
-            if (imgEl && imgEl.getAttribute('src') !== item.image) {
-              imgEl.setAttribute('src', item.image);
-            }
-            if (imgEl) imgEl.style.display = '';
-            if (fbEl) (fbEl as HTMLElement).style.display = 'none';
-          } else if (fbEl) {
+          const imgEl = img.querySelector('img') as HTMLImageElement | null;
+          const fbEl = img.querySelector('.showcase-wheel-fallback') as HTMLElement | null;
+          const showFallback = (letter: string) => {
             if (imgEl) imgEl.style.display = 'none';
-            (fbEl as HTMLElement).style.display = '';
-            (fbEl as HTMLElement).textContent = item.name.slice(0, 1);
+            if (fbEl) {
+              fbEl.style.display = '';
+              fbEl.textContent = letter;
+            }
+          };
+          if (item.image) {
+            const src = item.image;
+            // dataset.errored remembers which src failed; a re-visit of the
+            // same dead item keeps the fallback, a NEW src resets and retries
+            const errored = imgEl?.dataset.errored === src;
+            if (imgEl && !errored) {
+              if (imgEl.getAttribute('src') !== src) {
+                imgEl.onerror = () => {
+                  if (imgEl) imgEl.dataset.errored = src;
+                  showFallback(item.name.slice(0, 1));
+                };
+                imgEl.setAttribute('src', src);
+              }
+              imgEl.style.display = '';
+              if (fbEl) fbEl.style.display = 'none';
+            } else if (errored) {
+              showFallback(item.name.slice(0, 1));
+            }
+          } else if (fbEl) {
+            showFallback(item.name.slice(0, 1));
           }
         }
 

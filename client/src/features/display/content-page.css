@@ -12,6 +12,57 @@
   background: color-mix(in oklab, var(--canvas) 92%, transparent);
   backdrop-filter: blur(8px);
   padding: 14px 32px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+/* search box, top-right of the sticky header (resource-page search) */
+.content-search {
+  width: clamp(170px, 24vw, 300px);
+  flex-shrink: 1;
+  min-width: 0;
+  max-width: 100%;
+  padding: 9px 14px;
+  font: 500 14px/1.2 var(--font-body);
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--mist);
+  border-radius: 10px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+.content-search::placeholder { color: var(--ink-soft); opacity: 0.7; text-overflow: ellipsis; }
+.content-search:focus-visible { border-color: var(--focus); }
+
+/* search result status line (first item in .content-main; pulls the flex
+   gap from 96px down to ~32px below the status) */
+.content-search-status {
+  margin: 0 0 -60px;
+  color: var(--ink-soft);
+  font-size: 14px;
+}
+.content-search-clear {
+  margin-left: 12px;
+  font: 600 13px/1 var(--font-body);
+  color: var(--focus);
+  background: none;
+  border: none;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.content-search-clear:hover { text-decoration: underline; }
+
+/* TOC items whose section has no search matches: dimmed, not clickable */
+.toc-item:disabled { opacity: 0.35; cursor: default; }
+
+@media (max-width: 480px) {
+  /* the logo lockup is a fixed ~177px wide (h-9 × 4.92) — at 320px that
+     leaves ≈105px for the search box; keep the header on one row and the
+     page free of horizontal overflow */
+  .content-header { padding: 12px 14px; gap: 8px; }
+  .content-search { width: 30vw; min-width: 84px; padding: 8px 10px; }
 }
 
 .content-main {
