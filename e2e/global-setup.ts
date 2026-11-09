@@ -5,7 +5,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 void here;
 
 /**
- * Playwright globalSetup — warms the ISOLATED Vite client (:5174) module
+ * Playwright globalSetup — warms the ISOLATED Vite client (:5199) module
  * graph (admin chunk cold-compile can exceed test timeouts on the first
  * /admin visit).
  *
@@ -21,16 +21,16 @@ export default async function globalSetup(): Promise<void> {
     const browser = await chromium.launch();
     const page = await (await browser.newContext()).newPage();
     // hero route compiles the eager chunk + react-bits deps
-    await page.goto('http://localhost:5174/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
+    await page.goto('http://localhost:5199/', { waitUntil: 'domcontentloaded', timeout: 30_000 });
     await page.waitForTimeout(1_500);
     // admin route compiles the lazy AdminApp chunk (the slow cold one)
-    await page.goto('http://localhost:5174/admin', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto('http://localhost:5199/admin', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page
       .locator('h1')
       .first()
       .waitFor({ state: 'visible', timeout: 60_000 });
     // /resources compiles the ContentPage chunk
-    await page.goto('http://localhost:5174/resources', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+    await page.goto('http://localhost:5199/resources', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     await page.waitForTimeout(1_000);
     await browser.close();
     console.log('[globalSetup] isolated dev-server modules warmed');

@@ -87,6 +87,37 @@ test('deep link #category scrolls and sets active TOC', async ({ page }) => {
   );
 });
 
+test('search box (top-right): filters cards by name and eligibility keywords', async ({ page }) => {  // the search box lives in the sticky header, top-right
+  const box = page.getByLabel('Search programs');
+  await expect(box).toBeVisible();
+  await expect(box).toBeInViewport();
+
+  const before = await page.locator('.opportunity-card').count();
+  expect(before).toBeGreaterThan(3);
+
+  // 1) program-name keyword narrows the catalog and hides empty sections
+  // (count can drift if a parallel admin test mutates the shared e2e DB —
+  // compare against this test's own snapshot, not a global total)
+  await box.fill('Fulbright');
+  await expect(page.locator('.content-search-status')).toContainText(/match/i);
+  const hits = page.locator('.opportunity-card', { hasText: 'Fulbright' });
+  await expect(hits.first()).toBeVisible();
+  expect(await page.locator('.opportunity-card').count()).toBeLessThan(before);
+  // non-matching sections are hidden entirely
+  await expect(page.locator('#on-campus')).toHaveCount(0);
+
+  // 2) no-match shows the empty state with a Clear search action
+  await box.fill('zzz-no-such-program-zzz');
+  await expect(page.getByText(/No programs match/i)).toBeVisible();
+  await expect(page.locator('.opportunity-card')).toHaveCount(0);
+
+  // 3) clearing restores the catalog (sections back, cards > 0 again)
+  await page.getByRole('button', { name: 'Clear search' }).click();
+  await expect(page.locator('.opportunity-card').first()).toBeVisible();
+  await expect(page.locator('#on-campus')).toBeVisible();
+  expect(await page.locator('.opportunity-card').count()).toBeGreaterThan(3);
+});
+
 test('scenario 5: reduced motion — no scroll/hero animation, modal still works', async ({ browser }) => {
   const ctx = await browser.newContext({ reducedMotion: 'reduce' });
   const page = await ctx.newPage();
@@ -119,7 +150,8 @@ test('live sync: admin approve/withdraw reflect on an open display tab', async (
   // withdraw the first published item (the one the display shows)
   await admin.goto('/admin/review/content-management');
   const targetRow = admin.locator('tbody tr').first();
-  const withdrawnName = (await targetRow.locator('td').first().innerText()).split('\n')[0];
+  // td.nth(1) = Program (col 0 is the select checkbox)
+  const withdrawnName = (await targetRow.locator('td').nth(1).innerText()).split('\n')[0];
   await targetRow.getByRole('button', { name: 'Withdraw' }).click();
 
   // display tab: card disappears live (fuse window 7s + SSE ≤1s)
@@ -138,4 +170,33 @@ test('live sync: admin approve/withdraw reflect on an open display tab', async (
 
   await adminCtx.close();
   await displayCtx.close();
+});
+
+test('dead card image degrades to the letter fallback, never a broken icon', async ({ request, page }) => {
+  // admin-API: point the first published entry at an uploaded-image URL
+  // that matches the naming shape but has no file behind it (404).
+  // The `request` fixture carries the login cookie automatically.
+  await request.post('/api/login', { data: { password: 'dku-admin' } });
+  const list = await request.get('/api/entries?status=published');
+  const first = (await list.json())[0] as { id: number; name: string };
+  const dead = '/api/uploads/img-deadbeef-0000000000.png';
+  expect((await request.get(dead)).status()).toBe(404);
+
+  const patch = await request.put(`/api/entries/${first.id}`, { data: { imageUrl: dead } });
+  expect(patch.ok()).toBe(true);
+
+  // the display card for that entry: the <img> errors and is REPLACED by
+  // the tonal first-letter fallback — no broken-image icon left behind
+  await page.goto('/resources');
+  const card = page.locator('.opportunity-card', { hasText: first.name }).first();
+  await card.scrollIntoViewIfNeeded();
+  await expect(card.locator('.card-fallback')).toBeVisible({ timeout: 10_000 });
+  await expect(card.locator('img')).toHaveCount(0);
+
+  // the entry modal (click the card) also shows its fallback letter
+  await card.click();
+  const modal = page.locator('[role="dialog"]');
+  await modal.waitFor();
+  await expect(modal.locator('.modal-fallback')).toBeVisible({ timeout: 10_000 });
+  await page.keyboard.press('Escape');
 });

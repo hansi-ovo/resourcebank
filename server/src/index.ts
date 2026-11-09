@@ -35,6 +35,17 @@ function main(): void {
     console.log(`[server] RB_RESET_DB=1 — removed test db ${dbPath}`);
   }
 
+  // e2e isolation tripwire: RB_RESET_DB is exclusively Playwright's marker.
+  // If it ever resolves to a NON-test database (port/env routing accident),
+  // refuse to start rather than mutate real content. Playwright always sets
+  // RB_DB_PATH to server/data/rb-test.sqlite (playwright.config.ts).
+  if (process.env.RB_RESET_DB === '1' && !path.basename(dbPath).startsWith('rb-test')) {
+    console.error(
+      `[server] FATAL: RB_RESET_DB=1 (e2e marker) but dbPath is ${dbPath} — refusing to run e2e against a non-test database.`,
+    );
+    process.exit(1);
+  }
+
   const db = openDb(dbPath);
   seedIfEmpty(db);
   sweepStaleJobs(db, config.searchJobTimeoutMs);

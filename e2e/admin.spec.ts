@@ -68,7 +68,8 @@ test('scenario 1: login → search → approve → content management → withdr
 
   // withdraw the first published row → toast copy
   const cFirst = page.locator('tbody tr').first();
-  const cName = (await cFirst.locator('td').first().innerText()).split('\n')[0];
+  // td.nth(1) = Program (col 0 is the select checkbox)
+  const cName = (await cFirst.locator('td').nth(1).innerText()).split('\n')[0];
   await cFirst.getByRole('button', { name: 'Withdraw' }).click();
   await expect
     .poll(
@@ -268,4 +269,319 @@ test('manual add: home button → left nav → form → lands in content managem
       .find((s) => s.category.id === 'fellowships')!
       .entries.some((e) => e.url === url),
   ).toBe(true);
+});
+
+test('eligibility edit: Enter alone saves — no separate Save click needed', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+
+  // open the eligibility (audience) editor via the hidden keyboard Edit button
+  const editBtn = row.getByRole('button', { name: /Edit audience/ });
+  await editBtn.focus();
+  await editBtn.press('Enter');
+  const tagInput = page.getByLabel('Add audience tag');
+  await expect(tagInput).toBeVisible();
+
+  // type a unique tag and press ONLY Enter — that press saves everything
+  const tag = `Enter-Saved ${Date.now().toString().slice(-5)}`;
+  await tagInput.fill(tag);
+  await tagInput.press('Enter');
+  await expect
+    .poll(async () => (await page.getByText('Saved').count()) > 0, { timeout: 15_000 })
+    .toBe(true);
+
+  // persisted after reload
+  await page.reload();
+  await expect(page.locator('tbody tr').first()).toBeVisible();
+  await expect(
+    page.locator('.review-table-scroll span', { hasText: tag }).first(),
+  ).toBeVisible();
+
+  // second path: Save BUTTON on a staged draft saves too (Enter-free)
+  const row2 = page.locator('tbody tr').first();
+  await row2.getByRole('button', { name: /Edit audience/ }).focus();
+  await page.keyboard.press('Enter');
+  const tagInput2 = page.getByLabel('Add audience tag');
+  await expect(tagInput2).toBeVisible();
+  const tag2 = `Click-Saved ${Date.now().toString().slice(-5)}`;
+  await tagInput2.fill(tag2);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect
+    .poll(async () => (await page.locator('.review-table-scroll span', { hasText: tag2 }).count()) > 0, {
+      timeout: 15_000,
+    })
+    .toBe(true);
+  await page.reload();
+  await expect(
+    page.locator('.review-table-scroll span', { hasText: tag2 }).first(),
+  ).toBeVisible();
+});
+
+test('review list: Export selected downloads a CSV of the checked rows', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+  const programName = (await row.locator('td').nth(1).innerText()).split('\n')[0];
+
+  // check the first row → selection bar shows Export selected
+  await row.getByRole('checkbox').check();
+  await expect(page.getByText('1 selected')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /export/i }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^review-list-\d{4}-\d{2}-\d{2}\.csv$/);
+
+  // CSV content carries the selected program row
+  const path = await download.path();
+  const { readFileSync } = await import('node:fs');
+  const content = readFileSync(path, 'utf8');
+  expect(content.startsWith('\uFEFF')).toBe(true); // UTF-8 BOM for Excel
+  expect(content).toContain('Programs,Web Links,Overview,Category,Eligibility,Application Timeline');
+  expect(content).toContain(programName);
+});
+
+test('content management: checkboxes + export the checked published rows', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/content-management');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+
+  await row.getByRole('checkbox').check();
+  await expect(page.getByText('1 selected')).toBeVisible();
+
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: /export/i }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toMatch(/^content-management-\d{4}-\d{2}-\d{2}\.csv$/);
+});
+
+test('manual add: recognize box (offline e2e) shows the graceful unavailable error', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/manual-add');
+
+  // the recognition box sits above the form
+  const box = page.getByLabel('Recognize from a web page');
+  await expect(box).toBeVisible();
+  // the Recognize button stays disabled until a URL is typed
+  const btn = page.getByRole('button', { name: 'Recognize' });
+  await expect(btn).toBeDisabled();
+  await box.fill('https://example.org/program');
+  await expect(btn).toBeEnabled();
+
+  // e2e runs with the LLM gateway blanked → the 503 path shows a readable toast
+  await btn.click();
+  await expect(page.getByText(/Auto-recognition is unavailable/i)).toBeVisible({ timeout: 10_000 });
+});
+
+test('image upload: manual add — upload a local JPG/PNG and ship it with the entry', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/manual-add');
+
+  // a real 1x1 PNG via buffer — no fixture files on disk
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.getByLabel('Upload an image file').setInputFiles({ name: 'qa-card.png', mimeType: 'image/png', buffer: png });
+
+  // upload fills the Image URL field with the servable path + toast
+  await expect(page.getByText('Image uploaded')).toBeVisible({ timeout: 10_000 });
+  const uploadedUrl = await page.locator('#manual-image').inputValue();
+  expect(uploadedUrl).toMatch(/^\/api\/uploads\/img-[a-z0-9]+-[a-f0-9]+\.png$/);
+
+  // the image is already served by the API
+  const img = await page.request.get(uploadedUrl);
+  expect(img.status()).toBe(200);
+  expect(img.headers()['content-type']).toMatch(/image\/png/);
+
+  // finish the form and submit — entry keeps the uploaded path
+  const url = `https://example.edu/upload-${Date.now()}`;
+  await page.getByLabel(/Program/).fill('Uploaded Image Fellowship');
+  await page.getByRole('radio', { name: 'Fellowships' }).click();
+  await page.getByLabel('Web link').fill(url);
+  await page.getByLabel(/^Overview/).fill('A manual entry created with a locally uploaded card image during an e2e run.');
+  await page.getByRole('button', { name: 'Add to Content management' }).click();
+  await expect(page.getByText('Added to Content management')).toBeVisible({ timeout: 15_000 });
+
+  // the row in content management shows the uploaded path and it persists
+  const row = page.locator('tbody tr', { hasText: 'Uploaded Image Fellowship' }).first();
+  await expect(row).toBeVisible();
+  await expect(row.getByText('/api/uploads/img-')).toBeVisible();
+  await page.reload();
+  await expect(
+    page.locator('tbody tr', { hasText: 'Uploaded Image Fellowship' }).first().getByText('/api/uploads/img-'),
+  ).toBeVisible();
+
+  // public payload carries it too
+  const pub = await page.request.get('/api/published');
+  const sections = (await pub.json()) as Array<{ entries: { imageUrl: string | null }[] }>;
+  expect(sections.some((s) => s.entries.some((e) => e.imageUrl === uploadedUrl))).toBe(true);
+});
+
+test('image upload: review-list inline edit — upload replaces the image and persists', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: /Edit image URL/ }).focus();
+  await page.keyboard.press('Enter');
+  // role=textbox pins the editor input (each row's Edit button shares the label)
+  const editor = page.getByRole('textbox', { name: 'Edit image URL' });
+  await expect(editor).toBeVisible();
+
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page.getByLabel('Upload an image file').setInputFiles({ name: 'qa-inline.png', mimeType: 'image/png', buffer: png });
+
+  // upload auto-saves: toast + the cell shows the uploaded path
+  await expect
+    .poll(async () => (await page.getByText('Saved').count()) > 0, { timeout: 15_000 })
+    .toBe(true);
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
+
+  // persists after reload
+  await page.reload();
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
+});
+
+test('image upload: PNG reported as application/octet-stream (WeChat/ZIP/IM-saved) still uploads', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: /Edit image URL/ }).click();
+  await page.getByRole('textbox', { name: 'Edit image URL' }).waitFor();
+
+  // valid PNG bytes, but the browser/OS reports the type as octet-stream —
+  // the client must sniff the magic bytes and upload anyway (regression:
+  // this exact file used to be rejected with "Unsupported format")
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await page
+    .getByLabel('Upload an image file')
+    .setInputFiles({ name: 'wechat-saved.png', mimeType: 'application/octet-stream', buffer: png });
+
+  await expect
+    .poll(async () => (await page.getByText('Saved').count()) > 0, { timeout: 15_000 })
+    .toBe(true);
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
+
+  // and it persists after reload
+  await page.reload();
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
+});
+
+test('image upload: a non-image file named .png is rejected with a clear error, nothing saved', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+  // remember THIS row's own image cell (other tests in this file may leave
+  // /api/uploads/ URLs on sibling rows — only this row must stay untouched)
+  const before = await row.locator('td').nth(7).innerText();
+  await row.getByRole('button', { name: /Edit image URL/ }).click();
+  await page.getByRole('textbox', { name: 'Edit image URL' }).waitFor();
+
+  await page
+    .getByLabel('Upload an image file')
+    .setInputFiles({ name: 'fake.png', mimeType: 'image/png', buffer: Buffer.from('this is just text, not an image') });
+
+  await expect(page.getByText(/Unsupported format/i)).toBeVisible({ timeout: 10_000 });
+  // the editor stays open, and THIS row's image cell is byte-for-byte unchanged
+  await expect(page.getByRole('textbox', { name: 'Edit image URL' })).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect.poll(async () => row.locator('td').nth(7).innerText()).toBe(before);
+});
+
+test('image upload: blur while the file chooser is open must NOT save; the picked file still lands', async ({ page }) => {
+  await page.goto('/admin');
+  await page.getByLabel('Password').fill(PASSWORD);
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByRole('heading', { name: 'Hi, admin :)' })).toBeVisible();
+  await page.goto('/admin/review/review-list');
+
+  const row = page.locator('tbody tr').first();
+  await expect(row).toBeVisible();
+  await row.getByRole('button', { name: /Edit image URL/ }).click();
+  const editor = page.getByRole('textbox', { name: 'Edit image URL' });
+  await editor.waitFor();
+  const initial = await editor.inputValue();
+
+  // click the REAL Upload button (not setInputFiles): Playwright intercepts
+  // the chooser, so it stays "open" until we set files — exactly the window
+  // in which Windows Chromium blurs the text input when the native dialog opens.
+  const requests: string[] = [];
+  page.on('request', (r) => requests.push(r.method() + ' ' + r.url()));
+  const [chooser] = await Promise.all([
+    page.waitForEvent('filechooser', { timeout: 5_000 }),
+    page.getByRole('button', { name: 'Upload' }).click(),
+  ]);
+
+  // the stray blur that Windows users hit the moment the dialog opens
+  await page.evaluate(() => {
+    const el = document.querySelector('input[aria-label="Edit image URL"]') as HTMLInputElement | null;
+    el?.blur();
+  });
+  await page.waitForTimeout(800);
+
+  // NO save happened: no Saved TOAST (precise locator — sibling tests leave
+  // "Enter-Saved 123" eligibility chips in this shared-DB table), no PUT,
+  // the editor + its value survived
+  const savedToast = page.locator('[role="status"]').filter({ hasText: /^Saved$/ });
+  expect(await savedToast.count()).toBe(0);
+  expect(requests.filter((r) => r.startsWith('PUT'))).toHaveLength(0);
+  await expect(editor).toBeVisible();
+  await expect(editor).toHaveValue(initial);
+
+  // now the admin picks the file: upload → save → cell replaced
+  const png = Buffer.from(
+    'iVBORw0KGgoAAAANUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+    'base64',
+  );
+  await chooser.setFiles({ name: 'dialog.png', mimeType: 'image/png', buffer: png });
+
+  await expect
+    .poll(async () => (await savedToast.count()) > 0, { timeout: 15_000 })
+    .toBe(true);
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
+  await page.reload();
+  await expect(page.locator('tbody tr').first().getByText('/api/uploads/img-')).toBeVisible();
 });
