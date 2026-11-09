@@ -32,7 +32,9 @@ const createSchema = z.object({
   audience: z.array(z.string().trim().min(1).max(120)).max(12).default([]),
   timeline: z.string().trim().max(500).default(''),
   notes: z.string().trim().max(1000).default(''),
-  imageUrl: z.union([z.literal(''), z.string().trim().url().max(1000)]).optional(),
+  // image: external URL OR a servable relative path (/api/uploads/... or
+  // /api/seedimg/...); empty string clears it (same contract as patchSchema)
+  imageUrl: z.string().trim().max(1000).optional(),
 });
 
 /** GET /api/entries/published — public display payload grouped by canonical order. */
