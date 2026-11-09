@@ -158,3 +158,20 @@ export interface EntryPatch {
   /** image URL; empty string clears it (null in the DB) */
   imageUrl?: string;
 }
+
+/** POST /api/import-url payload — auto-recognition for the manual-add form. */
+export interface UrlImportResult {
+  name: string;
+  summary: string;
+  /** the FINAL url after redirects (short links like lnkd.in resolve here) */
+  url: string;
+  audience: string[];
+  /** ISO dates from the page, when present (joined into the timeline text) */
+  startsAt: string | null;
+  endsAt: string | null;
+  timeline: string;
+  category: CategoryId | null;
+  /** og:image / twitter:image from the page's <head>, when present */
+  imageUrl: string | null;
+  quality: number;
+}
