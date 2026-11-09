@@ -1,8 +1,9 @@
-import { useState, type FormEvent, type ReactNode } from 'react';
+import { useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router';
-import { CATEGORIES, type CategoryId, type Entry } from 'shared/types';
+import { CATEGORIES, type CategoryId, type Entry, type UrlImportResult } from 'shared/types';
 import { api } from '@/lib/api';
 import { useToast } from '@/components/ui/Toast';
+import { uploadImageFile } from '@/lib/uploadImage';
 
 /**
  * Manual add tab (left-nav "Add manually"): the admin types a program's
@@ -61,6 +62,60 @@ export function ManualAddTab() {
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
+  // auto-recognition box (top of the form): paste a link → every field below
+  // is filled from the page's content; the admin adjusts then confirms.
+  const [importUrl, setImportUrl] = useState('');
+  const [importing, setImporting] = useState(false);
+
+  // local image upload state (Image URL field)
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageFileRef = useRef<HTMLInputElement>(null);
+
+  async function onImageFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // allow re-picking the same file
+    if (!file || uploadingImage) return;
+    setUploadingImage(true);
+    try {
+      const url = await uploadImageFile(file);
+      setImageUrl(url);
+      toast.show({ kind: 'saved', message: 'Image uploaded' });
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof Error ? err.message : 'Upload failed. Please try again.',
+      });
+    }
+    setUploadingImage(false);
+  }
+
+  async function recognize(e: FormEvent) {
+    e.preventDefault();
+    const u = importUrl.trim();
+    if (!u || importing) return;
+    setImporting(true);
+    try {
+      const draft = await api.post<UrlImportResult>('/api/import-url', { url: u });
+      setName(draft.name);
+      setSummary(draft.summary);
+      setUrl(draft.url); // final URL after redirects
+      setAudience(draft.audience);
+      setTagDraft('');
+      setTimeline(draft.timeline);
+      setImageUrl(draft.imageUrl ?? '');
+      if (draft.category) setCategory(draft.category);
+      toast.show({ kind: 'saved', message: 'Recognized — check each field, then confirm' });
+    } catch (err) {
+      toast.show({
+        kind: 'error',
+        message: err instanceof Error && err.message
+          ? err.message
+          : 'Could not recognize that page. Fill the form manually.',
+      });
+    }
+    setImporting(false);
+  }
+
   function addTag() {
     const v = tagDraft.trim();
     if (v && !audience.includes(v) && audience.length < 12) setAudience([...audience, v]);
@@ -72,12 +127,17 @@ export function ManualAddTab() {
     if (saving) return;
     setSaving(true);
     try {
+      // A tag typed but not yet committed with Enter still counts — saving
+      // the form alone (or pressing Enter anywhere to submit) must persist it.
+      const pending = tagDraft.trim();
+      const finalAudience =
+        pending && !audience.includes(pending) && audience.length < 12 ? [...audience, pending] : audience;
       await api.post<Entry>('/api/entries', {
         name: name.trim(),
         summary: summary.trim(),
         url: url.trim(),
         category,
-        audience,
+        audience: finalAudience,
         timeline: timeline.trim(),
         notes: notes.trim(),
         imageUrl: imageUrl.trim(),
@@ -97,11 +157,44 @@ export function ManualAddTab() {
     <section aria-label="Add manually" className="w-full max-w-[720px]">
       <h2 className="font-display text-[24px] font-semibold text-ink">Add a program manually</h2>
       <p className="mt-1 max-w-[60ch] text-[14px] text-ink-soft">
-        Fill in the program details and confirm — it goes straight into Content
-        management and appears on the display site.
+        Paste a link to auto-fill the form, or type the details yourself — it
+        goes straight into Content management and appears on the display site.
       </p>
 
-      <form onSubmit={submit} className="mt-6 space-y-5" noValidate>
+      {/* auto-recognition: URL in → every field below filled from the page */}
+      <form onSubmit={recognize} className="mt-6">
+        <label htmlFor="manual-import-url" className="block text-[14px] font-medium text-ink">
+          Recognize from a web page
+        </label>
+        <p className="mt-0.5 text-[13px] text-ink-soft">
+          Paste the program's link (short links like lnkd.in work too) — the timeline, overview and
+          the rest fill in automatically.
+        </p>
+        <div className="mt-2 flex gap-2">
+          <input
+            id="manual-import-url"
+            type="url"
+            className={inputCls}
+            style={focusStyle}
+            value={importUrl}
+            onChange={(e) => setImportUrl(e.target.value)}
+            placeholder="https://…"
+            disabled={importing}
+          />
+          <button
+            type="submit"
+            disabled={importing || importUrl.trim().length === 0}
+            className="shrink-0 rounded-lg px-5 py-2.5 text-[14px] font-semibold text-white transition-all duration-150 hover:brightness-110 active:scale-[0.98] disabled:cursor-wait disabled:opacity-70 focus-visible:outline-2"
+            style={{ background: 'var(--ramp-mid)', outlineColor: 'var(--focus)' }}
+          >
+            {importing ? 'Recognizing…' : 'Recognize'}
+          </button>
+        </div>
+      </form>
+
+      <div aria-hidden className="my-6 border-t border-mist" />
+
+      <form onSubmit={submit} className="space-y-5" noValidate>
         <Field label="Program" required htmlFor="manual-name">
           <input
             id="manual-name"
@@ -226,16 +319,39 @@ export function ManualAddTab() {
           />
         </Field>
 
-        <Field label="Image URL" htmlFor="manual-image">
-          <input
-            id="manual-image"
-            type="url"
-            className={inputCls}
-            style={focusStyle}
-            value={imageUrl}
-            onChange={(e) => setImageUrl(e.target.value)}
-            placeholder="https://… (left empty → category placeholder art)"
-          />
+        <Field
+          label="Image URL"
+          htmlFor="manual-image"
+          hint="Paste an image link, or upload a JPG / PNG / WebP / GIF from your computer"
+        >
+          <div className="flex gap-2">
+            <input
+              id="manual-image"
+              type="text"
+              className={inputCls}
+              style={focusStyle}
+              value={imageUrl}
+              onChange={(e) => setImageUrl(e.target.value)}
+              placeholder="https://… (left empty → category placeholder art)"
+            />
+            <input
+              ref={imageFileRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif"
+              onChange={onImageFile}
+              className="hidden"
+              aria-label="Upload an image file"
+            />
+            <button
+              type="button"
+              disabled={uploadingImage}
+              onClick={() => imageFileRef.current?.click()}
+              className="shrink-0 rounded-lg border border-mist bg-surface px-4 py-2.5 text-[14px] font-semibold text-ink transition-colors hover:border-ink-soft/40 disabled:cursor-wait disabled:opacity-70 focus-visible:outline-2"
+              style={{ outlineColor: 'var(--focus)' }}
+            >
+              {uploadingImage ? 'Uploading…' : 'Upload'}
+            </button>
+          </div>
         </Field>
 
         <Field label="Notes" htmlFor="manual-notes" hint="Admin-only, never shown on the display site">
