@@ -90,6 +90,8 @@ function main(): void {
     provider,
     checker,
     searchDelayMs: liveSearch ? 500 : config.searchDelayMs,
+    // uploaded admin images live next to the SQLite file — same backup story
+    uploadDir: path.join(path.dirname(dbPath), 'uploads'),
   });
 
   // Monday 09:00 Asia/Shanghai update check (D11).

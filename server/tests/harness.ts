@@ -8,6 +8,7 @@ import { openDb, seedIfEmpty } from '../src/db';
 import { createBus, type Bus } from '../src/bus';
 import { MockSearchProvider } from '../src/providers/MockSearchProvider';
 import { MockUpdateChecker } from '../src/providers/MockUpdateChecker';
+import type { ImportUrlDeps } from '../src/routes/import-url';
 
 export interface TestContext {
   dir: string;
@@ -21,6 +22,10 @@ export interface MakeAppOptions {
   seed?: boolean;
   searchDelayMs?: number;
   adminPassword?: string;
+  /** Test seam for /api/import-url (fake LLM + page fetcher). */
+  importUrl?: ImportUrlDeps;
+  /** Throwaway uploads dir for /api/uploads (defaults to <tmpdir>/uploads). */
+  uploadDir?: string;
 }
 
 /** Builds an Express app backed by a throwaway SQLite file. No ports involved. */
@@ -36,6 +41,8 @@ export function makeApp(opts: MakeAppOptions = {}): TestContext {
     provider: new MockSearchProvider(),
     checker: new MockUpdateChecker(),
     searchDelayMs: opts.searchDelayMs ?? 300,
+    importUrl: opts.importUrl,
+    uploadDir: opts.uploadDir ?? path.join(dir, 'uploads'),
   };
   const app = createApp(deps);
   return {

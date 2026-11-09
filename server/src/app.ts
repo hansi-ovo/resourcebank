@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response, type NextFunction } from 'express';
+import path from 'node:path';
 import type Database from 'better-sqlite3';
 import { z } from 'zod';
 import type { AdminSummary, SearchStats } from '../../shared/types';
@@ -13,6 +14,8 @@ import { searchRoutes, sweepStaleJobs } from './routes/search';
 import { updatesRoutes } from './routes/updates';
 import { streamRoutes } from './routes/stream';
 import { wechatWhitelistRoutes } from './routes/wechat-whitelist';
+import { importUrlRoutes, type ImportUrlDeps } from './routes/import-url';
+import { uploadsRoutes } from './routes/uploads';
 import { createBus, type Bus } from './bus';
 import type { SearchProvider, UpdateChecker } from './providers/types';
 import type { AuthDeps } from './auth';
@@ -26,6 +29,10 @@ export interface AppDeps {
   provider: SearchProvider;
   checker: UpdateChecker;
   searchDelayMs: number;
+  /** Test seam for /api/import-url (fake LLM + fake page fetcher). */
+  importUrl?: ImportUrlDeps;
+  /** Directory for uploaded admin images (defaults to <cwd>/data/uploads). */
+  uploadDir?: string;
 }
 
 export function createApp(deps: AppDeps): Express {
@@ -134,12 +141,12 @@ export function createApp(deps: AppDeps): Express {
     res.json(results);
   });
 
-  app.use(
-    '/api/search',
-    admin,
-    searchRoutes({ db, bus, provider: deps.provider, delayMs: deps.searchDelayMs }),
-  );
+  app.use('/api/search', admin, searchRoutes({ db, bus, provider: deps.provider, delayMs: deps.searchDelayMs }));
   app.use('/api/updates', admin, updatesRoutes({ db, bus, checker: deps.checker }));
+  app.use('/api/import-url', admin, importUrlRoutes(deps.importUrl ?? {})); // POST — manual-add auto-recognition
+  const uploadDir =
+    deps.uploadDir ?? path.resolve(process.cwd(), 'data', 'uploads'); // index.ts always passes the real dir
+  app.use('/api/uploads', uploadsRoutes(uploadDir, admin)); // admin POST + public GET (display site images)
 
   // ── errors ────────────────────────────────────────────────────────────
   app.use((_req: Request, res: Response) => {
